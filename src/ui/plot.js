@@ -49,9 +49,13 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
       'aria-label': `${p.title} along the beam. ${summary}` });
     // grid: zero line, the two extremes, and x ticks
     const yTicks = flat ? [0] : [...new Set([0, p.y[iMax], p.y[iMin]])];
-    for (const v of yTicks) {
-      svg.append(s('line', { class: v === 0 ? 'zero-line' : 'grid-line', x1: M.l, x2: width - M.r, y1: py(v), y2: py(v) }));
-      svg.append(s('text', { x: M.l - 8, y: py(v) + 4, 'text-anchor': 'end', text: fmt(v, 3) }));
+    const placed = [];
+    for (const v of yTicks) {                    // zero first, then the extremes; skip a label that would sit on another
+      const yv = py(v);
+      svg.append(s('line', { class: v === 0 ? 'zero-line' : 'grid-line', x1: M.l, x2: width - M.r, y1: yv, y2: yv }));
+      if (placed.some((q) => Math.abs(q - yv) < 12)) continue;
+      placed.push(yv);
+      svg.append(s('text', { x: M.l - 8, y: yv + 4, 'text-anchor': 'end', text: fmt(v, 3) }));
     }
     const step = niceStep(x1 - x0, Math.max(3, Math.floor(width / 110)));
     for (let k = Math.ceil(x0 / step); k * step <= x1 + 1e-9; k++) {

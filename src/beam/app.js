@@ -1,20 +1,21 @@
 // Beam calculator page: menu bar, setup strip, input tables, plane views,
 // Solve, diagrams and result tables. All mechanics live in solver.js; this
 // file only moves numbers between the page and the solver.
-import { h, s, clear, makeDialog, buildMenus, copyText, downloadText } from '../ui/dom.js';
+import { h, clear } from '../ui/dom.js';
 import { renderPlotGroup } from '../ui/plot.js';
-import { UNIT_CHOICES, UNIT_PRESETS, DEFAULT_UNITS, unitTable, fmt } from '../core/units.js';
-import { SHAPES } from '../core/sections.js';
-import { MATERIALS } from '../core/materials.js';
+import { UNIT_CHOICES, DEFAULT_UNITS, unitTable, fmt } from '../core/units.js';
 import { FORMULA_HELP } from '../core/expr.js';
+import { sectionSummary as sectionText, materialSummary } from '../core/inputs.js';
+import {
+  openSectionDialog, openMaterialDialog, openUnitsDialog, parseSaved, fileSlug, showMessages as showBox,
+} from '../ui/dialogs.js';
 import { solveBeam } from './solver.js';
 import { drawPlane } from './draw.js';
 import {
-  EXAMPLES, SUPPORT_TYPES, DIRECTIONS, PROFILES, emptyModel, toSolverInput, sectionSI,
-  stressSummary, convertModel, materialPreset, shapeDefaults, parseNum, modelNotes,
+  EXAMPLES, SUPPORT_TYPES, DIRECTIONS, PROFILES, emptyModel, toSolverInput,
+  stressSeries, convertModel, parseNum, modelNotes, formulaUnits,
 } from './model.js';
 
-const REPO_URL = 'https://github.com/Zhuyin21/structural-engineering-calculator';
 const STORE_KEY = 'sec.beam.model.v1';
 const $ = (id) => document.getElementById(id);
 
@@ -34,27 +35,34 @@ const Q = {
   twist: { title: 'Angle of twist', sym: 'φ', kind: 'angle' },
   N: { title: 'Axial force', sym: 'N', kind: 'force' },
   u: { title: 'Axial displacement', sym: 'u', kind: 'deflection' },
+  // Stresses from beam theory (torsion not included); see stressSeries in model.js.
+  sigmaMax: { title: 'Largest normal stress', sym: '\u03C3max', kind: 'stress' },
+  sigmaMin: { title: 'Smallest normal stress', sym: '\u03C3min', kind: 'stress' },
+  tau: { title: 'Transverse shear stress at the neutral axis', sym: '\u03C4', kind: 'stress' },
+  vonMises: { title: 'von Mises stress', sym: "\u03C3\u2032", kind: 'stress' },
 };
+const STRESS_KEYS = ['sigmaMax', 'sigmaMin', 'tau', 'vonMises'];
 const TABS = {
   xy: { label: 'Beam Diagrams (XY)', plane: 'XY', keys: ['Vy', 'Mz', 'slopeXY', 'v'] },
   xz: { label: 'Beam Diagrams (XZ)', plane: 'XZ', keys: ['Vz', 'My', 'slopeXZ', 'w'] },
   // Quantities that do not belong to one plane. Total moment, torque and axial
   // force are always drawn here, even when they are zero.
   combined: { label: '3D Beam Diagrams', keys: ['Mtotal', 'T', 'N', 'twist', 'u'] },
+  stress: { label: 'Stress Diagrams', keys: STRESS_KEYS },
 };
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
 let model = loadSaved() ?? structuredClone(EXAMPLES[0]);
-let solved = null;        // { result, section } from the last successful solve (SI)
+let solved = null;        // { result, section, material, stress } from the last successful solve (SI)
 let stale = true;         // true when the model changed since that solve
 let tab = 'xy';
 let queryX = '';
 
 function normalize(m) {
   const base = emptyModel();
-  const out = { ...base, ...m };
+  const out = { ...base, ...m, kind: 'beam' };
   out.units = { ...base.units, ...(m.units || {}) };
   for (const [k, list] of Object.entries(UNIT_CHOICES)) if (!list.includes(out.units[k])) out.units[k] = DEFAULT_UNITS[k];
   out.section = { ...base.section, ...(m.section || {}) };
@@ -90,19 +98,7 @@ function touch() {
 // ---------------------------------------------------------------------------
 const U = () => unitTable(model.units);
 
-function sectionSummary() {
-  const sec = model.section;
-  if (!sec || sec.shape === 'none') return 'None (forces only)';
-  if (sec.shape === 'custom') return 'Custom values';
-  const def = SHAPES[sec.shape];
-  return `${def.label} ${def.dims.map(([k]) => fmt(parseNum(sec.dims[k]), 4)).join(' × ')} ${U().dim.label}`;
-}
-function materialSummary() {
-  const E = parseNum(model.material.E);
-  if (E === null) return 'Not set';
-  const name = MATERIALS.find((m) => m.id === model.material.id)?.name ?? 'Custom';
-  return `${name.replace(/ \(.*\)/, '')} · E ${fmt(E, 4)} ${U().modulus.label}`;
-}
+const sectionSummary = () => (model.section?.shape === 'none' ? 'None (forces only)' : sectionText(model.units, model.section));
 
 function renderSetup() {
   const u = U();
@@ -116,9 +112,12 @@ function renderSetup() {
     h('div', { class: 'field' }, h('label', { for: 'beam-title', text: 'Name' }), title),
     h('div', { class: 'field' }, h('label', { for: 'beam-length', text: 'Beam length' }),
       h('div', { class: 'with-unit' }, len, h('span', { class: 'unit', text: u.length.label }))),
-    pick('pick-section', 'Cross-section', sectionSummary(), openSectionDialog),
-    pick('pick-material', 'Material', materialSummary(), openMaterialDialog),
-    pick('pick-units', 'Units', `${model.units.force} · ${model.units.length} · ${model.units.stress}`, openUnitsDialog),
+    pick('pick-section', 'Cross-section', sectionSummary(), () => openSectionDialog({ units: model.units, section: model.section, need: 'beam', allowNone: true,
+      onApply: (sec) => { model.section = sec; touch(); renderSetup(); } })),
+    pick('pick-material', 'Material', materialSummary(model.units, model.material), () => openMaterialDialog({ units: model.units, material: model.material,
+      note: 'E is needed for deflection, G for twist, and Sy for the factor of safety. Leave E blank to solve forces and reactions only.',
+      onApply: (mat) => { model.material = mat; touch(); renderSetup(); } })),
+    pick('pick-units', 'Units', `${model.units.force} · ${model.units.length} · ${model.units.stress}`, () => openUnitsDialog({ units: model.units, onApply: applyUnits })),
     h('div', { class: 'grow' }),
     h('button', { id: 'solve', class: 'btn primary solve', type: 'button', onClick: solve, text: 'Solve' }),
   );
@@ -225,7 +224,16 @@ function renderTables() {
         if (row.profile === 'formula') {
           const inp = h('input', { id: `distLoads-${i}-expr`, class: 'formula', type: 'text', value: row.expr ?? '', placeholder: '-5*sin(pi*x/L)', spellcheck: false, 'aria-label': `Load formula, row ${i + 1}`, title: FORMULA_HELP });
           inp.addEventListener('input', () => { row.expr = inp.value; touch(); });
-          cells.push(h('td', { colSpan: 2 }, inp));
+          // A formula is read in the units it was written in; show them, and
+          // offer to switch when the model's units have changed since.
+          if (!row.exprUnits) row.exprUnits = { force: model.units.force, length: model.units.length };
+          const fu = formulaUnits(row, model.units), same = fu.force === model.units.force && fu.length === model.units.length;
+          const tagText = `x, L in ${fu.length}; w in ${fu.force}${row.dir === 't' ? '\u00B7' + fu.length : ''}/${fu.length}`;
+          const tag = same ? h('span', { class: 'unit', text: tagText })
+            : h('button', { class: 'btn small unit-tag', type: 'button', text: `${tagText} \u2014 use current units`,
+              title: 'This formula was written in different units from the rest of the model and is still read in those. Click to read it in the current units instead.',
+              onClick: () => { row.exprUnits = { force: model.units.force, length: model.units.length }; touch(); renderTables(); } });
+          cells.push(h('td', { colSpan: 2 }, inp, tag));
         } else {
           cells.push(numCell('distLoads', row, i, 'w1', 'Load at start'));
           if (row.profile === 'linear') cells.push(numCell('distLoads', row, i, 'w2', 'Load at end'));
@@ -257,24 +265,19 @@ function drawViews() {
 // ---------------------------------------------------------------------------
 // Solve and results
 // ---------------------------------------------------------------------------
-function showMessages(kind, heading, items) {
-  const box = $('messages');
-  if (!items.length) return;
-  box.append(h('div', { class: `msg ${kind}`, role: kind === 'error' ? 'alert' : 'status' },
-    heading ? h('strong', { text: heading }) : null,
-    items.length === 1 && !heading ? items[0] : h('ul', {}, items.map((t) => h('li', { text: t })))));
-}
+const showMessages = (kind, heading, items) => showBox($('messages'), kind, heading, items);
 
 function solve(event, quiet = false) {
   clear($('messages'));
-  const { input, section, errors } = toSolverInput(model);
+  const { input, section, material, errors } = toSolverInput(model);
   if (errors.length) { if (!quiet) showMessages('error', 'Fix these before solving:', errors); return; }
   const result = solveBeam(input);
   if (!result.ok) { if (!quiet) showMessages('error', 'The beam cannot be solved yet:', result.errors); return; }
-  solved = { result, section };
+  solved = { result, section, material, stress: stressSeries(result, section) };
   stale = false;
   const len = (v) => `${fmt(v / U().length.f, 4)} ${U().length.label}`;
-  showMessages('note', null, [...result.warnings, ...result.notes, ...modelNotes(input, section, result, len)]);
+  const extra = result.active.torsion && solved.stress ? ['The stress diagrams and the von Mises stress do not include torsion. Torsional shear is listed separately in the stress table.'] : [];
+  showMessages('note', null, [...result.warnings, ...result.notes, ...modelNotes(input, section, result, len), ...extra]);
   renderResults();
   drawViews();
 }
@@ -287,12 +290,13 @@ function displaySeries() {
   const fScale = Math.max(peak('Vy'), peak('Vz'), peak('N'), ...r.reactions.flatMap((q) => [Math.abs(q.Fx), Math.abs(q.Fy), Math.abs(q.Fz)]));
   const mScale = Math.max(peak('Mz'), peak('My'), peak('T'), fScale * Lsi);
   const scale = { force: fScale, moment: mScale, angle: Math.max(peak('slopeXY'), peak('slopeXZ'), peak('twist')),
-    deflection: Math.max(peak('v'), peak('w'), peak('u')) };
+    deflection: Math.max(peak('v'), peak('w'), peak('u')), stress: solved.stress?.peak.vonMises?.value ?? 0 };
   const out = { x: r.x.map((v) => v / u.length.f), scale };
   for (const [k, q] of Object.entries(Q)) {
-    if (!r[k]) { out[k] = null; continue; }
+    const src = q.kind === 'stress' ? solved.stress : r;
+    if (!src || !src[k]) { out[k] = null; continue; }
     const cut = 1e-9 * scale[q.kind];
-    out[k] = r[k].map((v) => (Math.abs(v) <= cut ? 0 : v / u[q.kind].f));
+    out[k] = src[k].map((v) => (Math.abs(v) <= cut ? 0 : v / u[q.kind].f));
   }
   return out;
 }
@@ -301,6 +305,7 @@ const shown = (v, kind, scale) => (v === null || v === undefined ? null : Math.a
 function activeKeys(tabId) {
   const r = solved.result;
   const want = { xy: r.active.xy, xz: r.active.xz };
+  if (tabId === 'stress') return solved.stress ? STRESS_KEYS : [];
   return TABS[tabId].keys.filter((k) => {
     if (!r[k]) return false;
     if (tabId === 'combined') {
@@ -331,7 +336,9 @@ function renderResults() {
 
   const keys = tab === 'combined' ? [...new Set(['Mtotal', 'T', 'N', ...activeKeys(tab)])].sort((a, b) => TABS.combined.keys.indexOf(a) - TABS.combined.keys.indexOf(b)) : activeKeys(tab);
   if (!keys.length) {
-    plots.append(h('div', { class: 'plot-empty', text: `No loads act in the ${TABS[tab].plane} plane.` }));
+    plots.append(h('div', { class: 'plot-empty', text: tab === 'stress'
+      ? 'Stresses need a cross-section with its area, second moments of area and extreme-fibre distances. Choose a shape in Cross-section and solve again.'
+      : `No loads act in the ${TABS[tab].plane} plane.` }));
   } else {
     renderPlotGroup(plots, {
       x: d.x, xUnit: u.length.label, marks: r.reactions.map((q) => q.x / u.length.f),
@@ -339,7 +346,7 @@ function renderResults() {
       plots: keys.map((k) => ({ title: `${Q[k].title} ${Q[k].sym}`, symbol: Q[k].sym, y: d[k], invert: !!Q[k].zDown,
         unit: u[Q[k].kind].label + (Q[k].zDown ? ', +z down' : '') })),
     });
-    const missing = TABS[tab].keys.filter((k) => !r[k] && (tab !== 'combined'));
+    const missing = TABS[tab].keys.filter((k) => !r[k] && (tab === 'xy' || tab === 'xz'));
     if (missing.length && (tab === 'xy' ? r.active.xy : r.active.xz)) {
       plots.append(h('div', { class: 'plot-empty', text: 'Slope and deflection need a cross-section and a material. Set them in the strip above and solve again.' }));
     }
@@ -373,7 +380,7 @@ function renderResultTables(d) {
       : 'Check passed: forces and moments balance.' }));
 
   // Extremes
-  const allKeys = [...new Set(Object.keys(TABS).flatMap((t) => activeKeys(t)))];
+  const allKeys = [...new Set(['xy', 'xz', 'combined'].flatMap((t) => activeKeys(t)))];
   const extremes = h('section', { class: 'full' }, h('h3', { text: 'Largest values' }),
     h('div', { class: 'scroll-x' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, th('Quantity'), th('Max'), th('at x', u.length.label), th('Min'), th('at x', u.length.label))),
@@ -384,7 +391,7 @@ function renderResultTables(d) {
       })))));
 
   // Stresses
-  const st = stressSummary(r, solved.section);
+  const st = solved.stress?.peak ?? null;
   let stressBody;
   if (!st) stressBody = h('p', { class: 'muted', text: 'Choose a cross-section to get stresses.' });
   else {
@@ -394,10 +401,15 @@ function renderResultTables(d) {
     if (r.active.xy) rows.push(row('Transverse shear from Vy', st.tauVy, 'not for this shape'));
     if (r.active.xz) rows.push(row('Transverse shear from Vz', st.tauVz, 'not for this shape'));
     if (r.active.torsion) rows.push(row('Torsional shear', st.tauT, 'not for this shape'));
+    rows.push(row(`von Mises stress${r.active.torsion ? ', without torsion' : ''}`, st.vonMises, ''));
     stressBody = h('div', { class: 'scroll-x' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, th('Peak stress'), th('Value', u.stress.label), th('at x', u.length.label))), h('tbody', {}, rows)));
   }
-  const stresses = h('section', {}, h('h3', { text: 'Stresses' }), stressBody);
+  const Sy = solved.material?.Sy;
+  const safety = !st?.vonMises ? null
+    : Sy ? `Factor of safety against yielding: n = Sy / \u03C3\u2032 = ${fmt(Sy / st.vonMises.value, 4)} (distortion-energy theory, Shigley Eq. 5-19).`
+      : 'Enter a yield strength Sy in Material to get the factor of safety.';
+  const stresses = h('section', {}, h('h3', { text: 'Stresses' }), stressBody, safety ? h('p', { class: 'table-note', text: safety }) : null);
 
   // Values at a position
   const qBody = h('tbody', {});
@@ -432,197 +444,29 @@ function renderResultTables(d) {
 
 function resultsCsv() {
   const d = displaySeries(), u = U();
-  const keys = ['N', 'Vy', 'Vz', 'T', 'My', 'Mz', 'Mtotal', 'u', 'v', 'w', 'slopeXY', 'slopeXZ', 'twist'].filter((k) => d[k]);
+  const keys = ['N', 'Vy', 'Vz', 'T', 'My', 'Mz', 'Mtotal', 'u', 'v', 'w', 'slopeXY', 'slopeXZ', 'twist', ...STRESS_KEYS].filter((k) => d[k]);
   const lines = [[`x (${u.length.label})`, ...keys.map((k) => `${Q[k].sym} (${u[Q[k].kind].label})`)].join(',')];
   d.x.forEach((x, i) => lines.push([x, ...keys.map((k) => d[k][i])].map((v) => +v.toPrecision(8)).join(',')));
   return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------
-// Dialogs
+// Units, help, and the interface the app shell uses
 // ---------------------------------------------------------------------------
-const labelled = (id, label, control, unit) => h('div', { class: 'field' }, h('label', { for: id, text: label }),
-  unit ? h('div', { class: 'with-unit' }, control, h('span', { class: 'unit', text: unit })) : control);
-
-const sectionDlg = makeDialog('Cross-section');
-function sectionSketch(shape, dims) {
-  const svg = s('svg', { viewBox: '0 0 132 132', width: 132, height: 132, class: 'sec-sketch', role: 'img', 'aria-label': 'Sketch of the cross-section' });
-  const g = (k) => parseNum(dims[k]) || 0;
-  const fit = (wd, ht) => 84 / Math.max(wd, ht, 1e-12);
-  const rect = (wd, ht, k, cls) => s('rect', { class: cls, x: 66 - wd * k / 2, y: 66 - ht * k / 2, width: wd * k, height: ht * k });
-  if (shape === 'rect' && g('b') > 0 && g('h') > 0) svg.append(rect(g('b'), g('h'), fit(g('b'), g('h')), 'shape'));
-  else if (shape === 'circle' && g('d') > 0) svg.append(s('circle', { class: 'shape', cx: 66, cy: 66, r: 42 }));
-  else if (shape === 'tube' && g('do') > g('di') && g('di') > 0) svg.append(s('circle', { class: 'shape', cx: 66, cy: 66, r: 42 }), s('circle', { class: 'hole', cx: 66, cy: 66, r: 42 * g('di') / g('do') }));
-  else if (shape === 'box' && g('b') > 2 * g('t') && g('h') > 2 * g('t') && g('t') > 0) {
-    const k = fit(g('b'), g('h'));
-    svg.append(rect(g('b'), g('h'), k, 'shape'), rect(g('b') - 2 * g('t'), g('h') - 2 * g('t'), k, 'hole'));
-  } else if (shape === 'ibeam' && g('h') > 2 * g('tf') && g('bf') > g('tw') && g('tf') > 0 && g('tw') > 0) {
-    const k = fit(g('bf'), g('h')), H2 = g('h') * k / 2, B2 = g('bf') * k / 2, tf = Math.max(g('tf') * k, 1.5), tw = Math.max(g('tw') * k, 1.5) / 2;
-    svg.append(s('polygon', { class: 'shape', points: [[-B2, -H2], [B2, -H2], [B2, -H2 + tf], [tw, -H2 + tf], [tw, H2 - tf], [B2, H2 - tf], [B2, H2], [-B2, H2], [-B2, H2 - tf], [-tw, H2 - tf], [-tw, -H2 + tf], [-B2, -H2 + tf]]
-      .map(([a, b]) => `${66 + a},${66 + b}`).join(' ') }));
-  } else svg.append(s('text', { x: 66, y: 70, 'text-anchor': 'middle', text: shape === 'custom' ? 'custom' : shape === 'none' ? 'none' : '?' }));
-  svg.append(s('line', { class: 'axis', x1: 66, x2: 66, y1: 126, y2: 8 }), s('line', { class: 'axis', x1: 8, x2: 124, y1: 66, y2: 66 }),
-    s('text', { class: 't-dim', x: 71, y: 16, text: 'y' }), s('text', { class: 't-dim', x: 116, y: 62, text: 'z' }));
-  return svg;
-}
-function openSectionDialog() {
-  const draft = structuredClone(model.section);
-  const u = U();
-  const render = () => {
-    const shapes = { none: 'None (forces and reactions only)', ...Object.fromEntries(Object.entries(SHAPES).map(([k, v]) => [k, v.label])), custom: 'Custom values' };
-    const sel = h('select', { id: 'sec-shape' }, Object.entries(shapes).map(([value, text]) => h('option', { value, text, selected: draft.shape === value })));
-    sel.addEventListener('change', () => {
-      draft.shape = sel.value;
-      if (SHAPES[draft.shape]) draft.dims = shapeDefaults(draft.shape, model.units);
-      render();
-    });
-    const fields = h('div', { class: 'form-grid' });
-    const propsBox = h('div', { class: 'props' });
-    const sketchHost = h('div', {});
-    const refresh = () => {
-      clear(sketchHost).append(sectionSketch(draft.shape, draft.dims));
-      const info = sectionSI({ units: model.units, section: draft });
-      clear(propsBox);
-      if (info.none) { propsBox.append(h('div', {}, h('span', { text: 'No section' }), 'Reactions, shear, moment and torque are still solved. Deflection and stress are not.')); return; }
-      if (info.error) { propsBox.append(h('div', {}, h('span', { text: 'Check the dimensions' }), info.error)); return; }
-      const p = info.props;
-      const item = (name, v, kind) => h('div', {}, h('span', { text: name }), h('b', { class: 'num', text: v === null || v === undefined ? '—' : `${fmt(v / u[kind].f, 5)} ${u[kind].label}` }));
-      propsBox.append(item('Area A', p.A, 'area'), item('Iz (bending in XY)', p.Iz, 'inertia'), item('Iy (bending in XZ)', p.Iy, 'inertia'), item('Torsion constant J', p.J, 'inertia'));
-    };
-    const dimInput = (obj, key, label, unit) => {
-      const inp = h('input', { id: `sec-${key}`, class: 'num-in', type: 'text', inputMode: 'decimal', value: obj[key] ?? '' });
-      inp.addEventListener('input', () => { obj[key] = inp.value.trim(); refresh(); });
-      return labelled(`sec-${key}`, label, inp, unit);
-    };
-    if (SHAPES[draft.shape]) for (const [key, label] of SHAPES[draft.shape].dims) fields.append(dimInput(draft.dims, key, label, u.dim.label));
-    if (draft.shape === 'custom') {
-      draft.custom = draft.custom || {};
-      fields.append(dimInput(draft.custom, 'Iz', 'Iz (bending in XY)', u.inertia.label), dimInput(draft.custom, 'Iy', 'Iy (bending in XZ)', u.inertia.label),
-        dimInput(draft.custom, 'A', 'Area A', u.area.label), dimInput(draft.custom, 'J', 'Torsion constant J', u.inertia.label),
-        dimInput(draft.custom, 'cy', 'Extreme fibre in y', u.dim.label), dimInput(draft.custom, 'cz', 'Extreme fibre in z', u.dim.label));
-    }
-    clear(sectionDlg.body).append(
-      labelled('sec-shape', 'Shape', sel),
-      h('div', { class: 'sec-row' }, sketchHost, fields),
-      h('p', { class: 'muted', hidden: draft.shape !== 'custom', text: 'Enter only what you have. Iz is used for loads along y, Iy for loads along z, A for axial loads and J for torque.' }),
-      propsBox);
-    refresh();
-  };
-  render();
-  clear(sectionDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Cancel', onClick: sectionDlg.close }),
-    h('button', { class: 'btn primary', type: 'button', text: 'Use this section', onClick: () => { model.section = draft; sectionDlg.close(); touch(); renderSetup(); } }));
-  sectionDlg.open();
+function applyUnits(units, mode) {
+  if (mode === 'convert') {
+    model = convertModel(model, units);          // same beam, so current results stay valid
+    save(); renderSetup(); renderTables(); drawViews(); renderResults();
+  } else {
+    model.units = { ...units };
+    for (const row of model.distLoads) if (row.profile === 'formula') row.exprUnits = { force: units.force, length: units.length };
+    renderSetup(); renderTables(); touch(); renderResults();
+  }
 }
 
-const materialDlg = makeDialog('Material');
-function openMaterialDialog() {
-  const draft = { ...model.material };
-  const u = U();
-  const eIn = h('input', { id: 'mat-E', class: 'num-in', type: 'text', inputMode: 'decimal', value: draft.E ?? '' });
-  const gIn = h('input', { id: 'mat-G', class: 'num-in', type: 'text', inputMode: 'decimal', value: draft.G ?? '' });
-  const sel = h('select', { id: 'mat-preset' }, MATERIALS.map((m) => h('option', { value: m.id, text: m.name, selected: draft.id === m.id })));
-  sel.addEventListener('change', () => {
-    draft.id = sel.value;
-    const p = materialPreset(sel.value, model.units);
-    if (p) { draft.E = p.E; draft.G = p.G; eIn.value = p.E; gIn.value = p.G; }
-  });
-  eIn.addEventListener('input', () => { draft.E = eIn.value.trim(); draft.id = 'custom'; sel.value = 'custom'; });
-  gIn.addEventListener('input', () => { draft.G = gIn.value.trim(); draft.id = 'custom'; sel.value = 'custom'; });
-  clear(materialDlg.body).append(
-    labelled('mat-preset', 'Material', sel),
-    h('div', { class: 'form-grid' },
-      labelled('mat-E', 'Elastic modulus E', eIn, u.modulus.label), labelled('mat-G', 'Shear modulus G', gIn, u.modulus.label)),
-    h('p', { class: 'muted', text: 'Preset values are typical textbook figures. E is needed for deflection; G only for twist. Leave both blank to solve forces and reactions only.' }));
-  clear(materialDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Cancel', onClick: materialDlg.close }),
-    h('button', { class: 'btn primary', type: 'button', text: 'Use this material', onClick: () => { model.material = draft; materialDlg.close(); touch(); renderSetup(); } }));
-  materialDlg.open();
-}
-
-const unitsDlg = makeDialog('Units');
-function openUnitsDialog() {
-  const draft = { ...model.units };
-  let mode = 'convert';
-  const names = { force: 'Force', length: 'Length along the beam', small: 'Section sizes and deflection', stress: 'Stress', modulus: 'E and G', angle: 'Slope and twist' };
-  const selects = {};
-  const grid = h('div', { class: 'form-grid' }, Object.entries(UNIT_CHOICES).map(([key, list]) => {
-    const sel = h('select', { id: `unit-${key}` }, list.map((v) => h('option', { value: v, text: v, selected: draft[key] === v })));
-    sel.addEventListener('change', () => { draft[key] = sel.value; });
-    selects[key] = sel;
-    return labelled(`unit-${key}`, names[key], sel);
-  }));
-  const presets = h('div', { class: 'presets' }, Object.entries(UNIT_PRESETS).map(([name, set]) =>
-    h('button', { class: 'btn small', type: 'button', text: name, onClick: () => { Object.assign(draft, set); for (const k of Object.keys(selects)) selects[k].value = draft[k]; } })));
-  const radio = (value, text) => {
-    const r = h('input', { type: 'radio', name: 'unit-mode', id: `unit-mode-${value}`, value, checked: mode === value });
-    r.addEventListener('change', () => { mode = value; });
-    return h('label', { for: `unit-mode-${value}` }, r, ` ${text}`);
-  };
-  clear(unitsDlg.body).append(
-    h('div', { class: 'field' }, h('span', { class: 'label', text: 'Quick sets' }), presets), grid,
-    h('div', { class: 'radio-row' }, radio('convert', 'Convert the numbers I have entered (the beam stays the same)'),
-      radio('relabel', 'Keep my numbers and only change the units they are read in')),
-    h('p', { class: 'muted', text: 'Derived units follow from these: moments in force × length, distributed loads in force per length, I and J in section size to the fourth power. Formula loads are never converted; check them after a change.' }));
-  clear(unitsDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Cancel', onClick: unitsDlg.close }),
-    h('button', { class: 'btn primary', type: 'button', text: 'Apply units', onClick: () => {
-      unitsDlg.close();
-      if (mode === 'convert') {
-        model = convertModel(model, draft);
-        save(); renderSetup(); renderTables(); drawViews(); renderResults();      // same beam, so results stay valid
-      } else { model.units = { ...draft }; renderSetup(); renderTables(); touch(); renderResults(); }
-    } }));
-  unitsDlg.open();
-}
-
-const textDlg = makeDialog('Export', { wide: true });
-function openExport(title, filename, text, type) {
-  textDlg.dialog.setAttribute('aria-label', title);
-  textDlg.dialog.querySelector('h2').textContent = title;
-  const area = h('textarea', { id: 'export-text', class: 'export', readOnly: true, value: text, 'aria-label': title });
-  const status = h('span', { class: 'muted', role: 'status' });
-  clear(textDlg.body).append(area, status);
-  clear(textDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Copy', onClick: async () => { status.textContent = (await copyText(text, area)) ? 'Copied.' : 'Selected. Press Ctrl+C or Cmd+C to copy.'; } }),
-    h('button', { class: 'btn primary', type: 'button', text: `Download ${filename}`, onClick: () => downloadText(filename, text, type) }));
-  textDlg.open();
-}
-const fileName = (ext) => `${(model.title || 'beam').trim().replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '').toLowerCase() || 'beam'}.${ext}`;
-
-const openDlg = makeDialog('Open a saved beam');
-function openOpenDialog() {
-  const area = h('textarea', { id: 'open-text', class: 'export', placeholder: 'Or paste the contents of a saved .json file here', 'aria-label': 'Saved beam as text' });
-  const status = h('span', { class: 'muted', role: 'status' });
-  const file = h('input', { id: 'open-file', type: 'file', accept: '.json,application/json' });
-  file.addEventListener('change', async () => { if (file.files[0]) area.value = await file.files[0].text(); });
-  clear(openDlg.body).append(labelled('open-file', 'Saved file', file), area, status);
-  clear(openDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Cancel', onClick: openDlg.close }),
-    h('button', { class: 'btn primary', type: 'button', text: 'Open', onClick: () => {
-      try {
-        const m = JSON.parse(area.value);
-        if (!m || m.version !== 1 || !m.units) throw new Error('bad');
-        openDlg.close();
-        loadModel(normalize(m), false);
-      } catch { status.textContent = 'That is not a beam saved from this calculator.'; }
-    } }));
-  openDlg.open();
-}
-
-const confirmDlg = makeDialog('Start a new beam?');
-function openNewDialog() {
-  clear(confirmDlg.body).append(h('p', { text: 'The current beam will be cleared. Save it first if you want to keep it.' }));
-  clear(confirmDlg.foot).append(
-    h('button', { class: 'btn', type: 'button', text: 'Cancel', onClick: confirmDlg.close }),
-    h('button', { class: 'btn primary', type: 'button', text: 'New beam', onClick: () => { confirmDlg.close(); loadModel(emptyModel(model.units), false); } }));
-  confirmDlg.open();
-}
-
-const helpDlg = makeDialog('Sign conventions', { wide: true });
-function openHelp() {
+function helpContent() {
   const li = (...c) => h('li', {}, ...c);
-  clear(helpDlg.body).append(h('div', { class: 'help' },
+  return h('div', { class: 'help' },
     h('h3', { text: 'Axes' }),
     h('ul', {}, li('x runs along the beam from the left end. y is up. z comes toward you in the XY view.'),
       li('The XZ view looks down on the beam from above: x to the right and +z down the page.')),
@@ -642,24 +486,11 @@ function openHelp() {
     h('h3', { text: 'Theory and limits' }),
     h('ul', {}, li('Euler-Bernoulli beam theory: small deflections, linear elastic material, no shear deformation.'),
       li('One uniform cross-section whose principal axes line up with y and z.'),
-      li('Torsional stress is given for round sections and closed rectangular tubes only.'))));
-  clear(helpDlg.foot).append(h('button', { class: 'btn primary', type: 'button', text: 'Close', onClick: helpDlg.close }));
-  helpDlg.open();
+      li('Beam theory is meant for span-to-depth ratios of 10 or more. Below that the calculator warns that the deflection shown is too small.'),
+      li('Stress diagrams: normal stress at the extreme fibres from bending in both planes plus axial load, transverse shear at the neutral axis, and the von Mises stress, taken as the larger of the two locations. Torsion is not included in these; torsional shear is listed separately for round sections and closed rectangular tubes.'),
+      li('Factor of safety against yielding is Sy divided by the largest von Mises stress.')));
 }
 
-const aboutDlg = makeDialog('About');
-function openAbout() {
-  clear(aboutDlg.body).append(h('div', { class: 'help' },
-    h('p', { text: 'An open-source calculator for engineering students to check their homework. The beam solver uses the stiffness method for the reactions and the method of sections for the diagrams, and is tested against closed-form textbook results.' }),
-    h('p', {}, 'Source code, tests and issue tracker: ', h('a', { href: REPO_URL, target: '_blank', rel: 'noopener', text: REPO_URL.replace('https://', '') })),
-    h('p', { class: 'muted', text: 'MIT licence. Results are for learning; check anything that matters independently.' })));
-  clear(aboutDlg.foot).append(h('button', { class: 'btn primary', type: 'button', text: 'Close', onClick: aboutDlg.close }));
-  aboutDlg.open();
-}
-
-// ---------------------------------------------------------------------------
-// Start-up
-// ---------------------------------------------------------------------------
 function loadModel(m, autoSolve) {
   model = m; solved = null; stale = true; queryX = ''; tab = 'xy';
   save();
@@ -668,37 +499,33 @@ function loadModel(m, autoSolve) {
   if (autoSolve) solve(); else { renderResults(); drawViews(); }
 }
 
-buildMenus($('menus'), [
-  { label: 'File', items: () => [
-    { label: 'New beam', onSelect: openNewDialog },
-    { label: 'Open…', onSelect: openOpenDialog },
-    { label: 'Save…', onSelect: () => openExport('Save this beam', fileName('json'), JSON.stringify(model, null, 2), 'application/json') },
-    'sep',
-    { label: 'Export results (CSV)…', disabled: !solved || stale, tag: !solved || stale ? 'solve first' : '', onSelect: () => openExport('Export results', fileName('csv'), resultsCsv(), 'text/csv') },
-  ] },
-  { label: 'Analysis', items: [
-    { label: 'Beam', current: true, tag: 'open' },
-    { label: 'Shaft', disabled: true, tag: 'planned' },
-    { label: 'Truss', disabled: true, tag: 'planned' },
-    { label: 'Frame', disabled: true, tag: 'planned' },
-  ] },
-  { label: 'Examples', items: EXAMPLES.map((ex) => ({ label: ex.title, onSelect: () => loadModel(normalize(structuredClone(ex)), true) })) },
-  { label: 'Help', items: [
-    { label: 'Sign conventions', onSelect: openHelp },
-    { label: 'About', onSelect: openAbout },
-  ] },
-]);
-
-renderSetup();
-renderTables();
-solve(null, true);                // open on a worked example with its results showing
-if (!solved) { renderResults(); drawViews(); }
-
-let resizeTimer = 0, lastWidth = 0;
-new ResizeObserver(() => {
-  const wNow = $('view-xy').clientWidth;
-  if (wNow === lastWidth) return;
-  lastWidth = wNow;
-  clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(() => { drawViews(); if (solved) renderResults(); }, 120);
-}).observe($('view-xy'));
+export const beam = {
+  id: 'beam', label: 'Beam', helpTitle: 'Beam: sign conventions and theory',
+  examples: EXAMPLES.map((ex) => ({ title: ex.title, load: () => loadModel(normalize(structuredClone(ex)), true) })),
+  init() {
+    renderSetup();
+    renderTables();
+    solve(null, true);                // open on a worked example with its results showing
+    if (!solved) { renderResults(); drawViews(); }
+    let timer = 0, last = 0;
+    new ResizeObserver(() => {
+      const wNow = $('view-xy').clientWidth;
+      if (!wNow || wNow === last) return;
+      last = wNow;
+      clearTimeout(timer);
+      timer = setTimeout(() => { drawViews(); if (solved) renderResults(); }, 120);
+    }).observe($('view-xy'));
+  },
+  show() { drawViews(); if (solved) renderResults(); },
+  newModel() { loadModel(emptyModel(model.units), false); },
+  saveText: () => JSON.stringify(model, null, 2),
+  openText(text) {
+    const m = parseSaved(text, 'beam');
+    if (!m) return false;
+    loadModel(normalize(m), false);
+    return true;
+  },
+  csv: () => (solved && !stale ? resultsCsv() : null),
+  fileName: (ext) => `${fileSlug(model.title, 'beam')}.${ext}`,
+  help: helpContent,
+};

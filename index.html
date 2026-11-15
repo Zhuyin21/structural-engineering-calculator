@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Structural Engineering Calculator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Open-source beam calculator for engineering students: reactions, shear, moment, slope, deflection, torque and stress for loads in the XY and XZ planes.">
+<meta name="description" content="Open-source beam, bar and column calculators for engineering students: reactions, diagrams, deflection, stress and buckling, following Shigley.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -15,41 +15,90 @@
   <header class="bar">
     <div class="brand">
       <h1 class="brand-name">Structural Engineering Calculator</h1>
-      <span class="brand-tool">Beam</span>
+      <span class="brand-tool" id="brand-tool">Beam</span>
     </div>
     <nav class="menus" id="menus" aria-label="Main menu"></nav>
   </header>
 
-  <section class="setup" id="setup" aria-label="Beam setup"></section>
-  <div class="messages" id="messages" aria-live="polite"></div>
+  <div class="analysis" id="analysis-beam">
+    <section class="setup" id="setup" aria-label="Beam setup"></section>
+    <div class="messages" id="messages" aria-live="polite"></div>
+    <main class="work">
+      <div class="col" id="tables"></div>
+      <div class="col">
+        <section class="panel" aria-label="Plane views">
+          <div class="panel-head">
+            <h2>Plane views</h2>
+            <div class="legend"><span><i style="background: var(--load)"></i>Loads</span><span><i style="background: var(--react)"></i>Reactions, after solving</span></div>
+          </div>
+          <div class="view"><div class="view-title"><b>XY plane</b><span>from the front: x right, y up</span></div><div id="view-xy"></div></div>
+          <div class="view"><div class="view-title"><b>XZ plane</b><span>from above: x right, z down</span></div><div id="view-xz"></div></div>
+        </section>
+        <section class="panel results" id="results" aria-label="Results">
+          <div class="panel-head">
+            <h2>Results</h2>
+            <span class="stale-note">The beam changed. Press Solve to update.</span>
+          </div>
+          <div class="results-body" id="results-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
 
-  <main class="work">
-    <div class="col" id="tables"></div>
-    <div class="col">
-      <section class="panel" aria-label="Plane views">
-        <div class="panel-head">
-          <h2>Plane views</h2>
-          <div class="legend"><span><i style="background: var(--load)"></i>Loads</span><span><i style="background: var(--react)"></i>Reactions, after solving</span></div>
-        </div>
-        <div class="view"><div class="view-title"><b>XY plane</b><span>from the front: x right, y up</span></div><div id="view-xy"></div></div>
-        <div class="view"><div class="view-title"><b>XZ plane</b><span>from above: x right, z down</span></div><div id="view-xz"></div></div>
-      </section>
-      <section class="panel results" id="results" aria-label="Results">
-        <div class="panel-head">
-          <h2>Results</h2>
-          <span class="stale-note">The beam changed. Press Solve to update.</span>
-        </div>
-        <div class="results-body" id="results-body"></div>
-      </section>
-    </div>
-  </main>
+  <div class="analysis" id="analysis-bar" hidden>
+    <section class="setup" id="bar-setup" aria-label="Setup"></section>
+    <div class="messages" id="bar-messages" aria-live="polite"></div>
+    <main class="work">
+      <div class="col" id="bar-tables"></div>
+      <div class="col">
+        <section class="panel" aria-label="Bar">
+          <div class="panel-head">
+            <h2>Bar</h2>
+            <div class="legend"><span><i style="background: var(--load)"></i>Loads</span><span><i style="background: var(--react)"></i>Reactions, after solving</span></div>
+          </div>
+          <div id="bar-view"></div>
+        </section>
+        <section class="panel results" id="bar-results" aria-label="Results">
+          <div class="panel-head">
+            <h2>Results</h2>
+            <span class="stale-note">The model changed. Press Solve to update.</span>
+          </div>
+          <div class="results-body" id="bar-results-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="analysis" id="analysis-column" hidden>
+    <section class="setup" id="col-setup" aria-label="Setup"></section>
+    <div class="messages" id="col-messages" aria-live="polite"></div>
+    <main class="work">
+      <div class="col" id="col-inputs"></div>
+      <div class="col">
+        <section class="panel" aria-label="Column">
+          <div class="panel-head">
+            <h2>Column</h2>
+            <div class="legend"><span>dashed line: buckled shape</span></div>
+          </div>
+          <div id="col-view"></div>
+        </section>
+        <section class="panel results" id="col-results" aria-label="Results">
+          <div class="panel-head">
+            <h2>Results</h2>
+            <span class="stale-note">The model changed. Press Solve to update.</span>
+          </div>
+          <div class="results-body" id="col-results-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
 
   <footer class="foot">
-    <span>Euler-Bernoulli beam theory, linear elastic, small deflections. For learning; check important results independently.</span>
+    <span>Linear elastic theory following Shigley's Mechanical Engineering Design. For learning; check important results independently.</span>
     <a href="https://github.com/Zhuyin21/structural-engineering-calculator" target="_blank" rel="noopener">Source on GitHub</a>
   </footer>
 </div>
 <!--app:end-->
-<script type="module" src="src/beam/app.js"></script>
+<script type="module" src="src/main.js"></script>
 </body>
 </html>

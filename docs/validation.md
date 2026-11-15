@@ -37,6 +37,36 @@ signs are both asserted, to a relative tolerance of 1e-9 unless noted.
 | Many spans | 12 spans with loads in both planes |
 | Peak total moment | located to 1e-8 against a fine scan, with distributed loads in both planes |
 
+| Stress along the beam | Mc/I at the extreme fibre, 3V/2A and 4V/3A at the neutral axis, von Mises as the larger of the two locations; resultant moment and shear on a round bar |
+| Formula units | a formula load gives the same beam after the model's units are changed |
+
+## Bar
+
+| Case | Checked against |
+|------|-----------------|
+| Stepped bar, one end fixed | N, sigma = N/A, strain, NL/AE per segment, total change in length, stress jump at the step |
+| Held at both ends, two materials | reactions shared in proportion to EA/L; zero net change in length |
+| Distributed axial load | N(x) and tip displacement wL^2/2EA |
+| Input checks | no support, missing area, missing E for an indeterminate bar |
+
+## Column
+
+| Case | Checked against |
+|------|-----------------|
+| Shigley Example 4-16 | Euler: d = 37.5 mm for 88 kN at l = 1.5 m; l/k = 150 for d = 40 mm; (l/k)1 = 90.4 |
+| Shigley Example 4-17 | fixed-fixed with C = 1.2: h = 22.2 mm |
+| Shigley Example 4-18 | Johnson: d = 19.0 mm for 88 kN at l = 375 mm; l/k = 75 for d = 20 mm |
+| Shigley Example 4-19 | (l/k)1 = 88.9 for Sy = 75 kpsi, E = 30 Mpsi |
+| Table 4-2 | all end-condition constants |
+| Formulas meet | Johnson and Euler both give Sy/2 at (l/k)1 |
+| Secant formula | direct evaluation of Eq. (4-53); yield load tends to the Euler load as e tends to zero |
+| Two planes | weak axis governs; a free end in the other plane can take over |
+
+## Materials
+
+Spot checks of Table A-20 (1006, 1020, 1045, 1050; HR and CD) and Table A-5
+(carbon steel, aluminum), and of conversion to and from US units.
+
 Every solve in the page runs the same two checks: the shear, moment, axial
 force and torque must return to zero at the right end, and the two bending
 methods must give the same reactions. The outcome is shown under the

@@ -49,7 +49,7 @@ const DOFS = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'];
 const num = (v) => (Number.isFinite(v) ? v : 0);
 
 /** A distributed load, restricted to one segment that it fully covers. */
-function segmentLoad(load, xa) {
+export function segmentLoad(load, xa) {
   if (load.linear) {
     const m = (load.w2 - load.w1) / (load.x2 - load.x1);
     const wa = load.w1 + m * (xa - load.x1);
@@ -67,7 +67,7 @@ function segmentLoad(load, xa) {
   return { w: load.w, I: (s) => cauchyIntegrals(load.w, xa, s) };
 }
 
-function sumIntegrals(loads, s) {
+export function sumIntegrals(loads, s) {
   const I = [0, 0, 0, 0];
   for (const ld of loads) {
     const Ik = ld.I(s);
@@ -77,14 +77,16 @@ function sumIntegrals(loads, s) {
 }
 
 // ---------------------------------------------------------------------------
-// Bar problem (axial or torsion): one unknown per node.
+// Bar problem (axial or torsion): one unknown per node. `S` is the stiffness
+// EA or GJ: one number, or an array with a value for each segment (stepped bar).
 // ---------------------------------------------------------------------------
-function solveBar({ nodes, S, fixed, spring, point, segLoads, label }) {
+export function solveBar({ nodes, S, fixed, spring, point, segLoads, label }) {
+  const Sj = (j) => (Array.isArray(S) ? S[j] : S);
   const n = nodes.length;
   const K = Array.from({ length: n }, () => new Array(n).fill(0));
   const F = point.slice();
   for (let j = 0; j < n - 1; j++) {
-    const h = nodes[j + 1] - nodes[j], k = S / h;
+    const h = nodes[j + 1] - nodes[j], k = Sj(j) / h;
     K[j][j] += k; K[j][j + 1] -= k; K[j + 1][j] -= k; K[j + 1][j + 1] += k;
     for (const ld of segLoads[j]) {
       F[j] += integrate((x) => ld.w(x) * (1 - (x - nodes[j]) / h), nodes[j], nodes[j + 1]);
@@ -127,14 +129,14 @@ function solveBar({ nodes, S, fixed, spring, point, segLoads, label }) {
   for (let j = 0; j < n - 1; j++) {
     Nf -= point[j] + R[j];
     const h = nodes[j + 1] - nodes[j];
-    segs.push({ xa: nodes[j], h, Na: Nf, ua: u[j], S, loads: segLoads[j] });
+    segs.push({ xa: nodes[j], h, Na: Nf, ua: u[j], S: Sj(j), loads: segLoads[j] });
     Nf -= sumIntegrals(segLoads[j], h)[0];
   }
   Nf -= point[n - 1] + R[n - 1];
   return { u, R, segs, closure: Nf, notes };
 }
 
-function evalBar(seg, s) {
+export function evalBar(seg, s) {
   const I = sumIntegrals(seg.loads, s);
   return { force: seg.Na - I[0], disp: seg.ua + (seg.Na * s - I[1]) / seg.S };
 }

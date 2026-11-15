@@ -39,7 +39,7 @@ export function makeDialog(title, { wide = false } = {}) {
 }
 
 /**
- * Menu bar. `menus` = [{ label, items: [{ label, tag, disabled, current, onSelect } | 'sep'] }].
+ * Menu bar. `menus` = [{ label, items: [{ label, tag, disabled, current, onSelect } | { heading } | 'sep'] }].
  * Items may also be a function returning the list, evaluated each time the menu opens.
  */
 export function buildMenus(container, menus) {
@@ -58,6 +58,7 @@ export function buildMenus(container, menus) {
         const items = typeof m.items === 'function' ? m.items() : m.items;
         for (const it of items) {
           if (it === 'sep') { list.append(h('div', { class: 'menu-sep' })); continue; }
+          if (it.heading) { list.append(h('div', { class: 'menu-heading', text: it.heading })); continue; }
           list.append(h('button', { class: 'menu-item', type: 'button', role: 'menuitem', disabled: !!it.disabled,
             'aria-current': it.current ? 'true' : null,
             onClick: () => { closeAll(); it.onSelect && it.onSelect(); } },
