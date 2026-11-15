@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Structural Engineering Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Open-source beam calculator for engineering students: reactions, shear, moment, slope, deflection, torque and stress for loads in the XY and XZ planes.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+<!--app:start-->
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <h1 class="brand-name">Structural Engineering Calculator</h1>
+      <span class="brand-tool">Beam</span>
+    </div>
+    <nav class="menus" id="menus" aria-label="Main menu"></nav>
+  </header>
+
+  <section class="setup" id="setup" aria-label="Beam setup"></section>
+  <div class="messages" id="messages" aria-live="polite"></div>
+
+  <main class="work">
+    <div class="col" id="tables"></div>
+    <div class="col">
+      <section class="panel" aria-label="Plane views">
+        <div class="panel-head">
+          <h2>Plane views</h2>
+          <div class="legend"><span><i style="background: var(--load)"></i>Loads</span><span><i style="background: var(--react)"></i>Reactions, after solving</span></div>
+        </div>
+        <div class="view"><div class="view-title"><b>XY plane</b><span>x right, y up, z toward you</span></div><div id="view-xy"></div></div>
+        <div class="view"><div class="view-title"><b>XZ plane</b><span>x right, z up</span></div><div id="view-xz"></div></div>
+      </section>
+      <section class="panel results" id="results" aria-label="Results">
+        <div class="panel-head">
+          <h2>Results</h2>
+          <span class="stale-note">The beam changed. Press Solve to update.</span>
+        </div>
+        <div class="results-body" id="results-body"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>Euler-Bernoulli beam theory, linear elastic, small deflections. For learning; check important results independently.</span>
+    <a href="https://github.com/Zhuyin21/structural-engineering-calculator" target="_blank" rel="noopener">Source on GitHub</a>
+  </footer>
+</div>
+<!--app:end-->
+<script type="module" src="src/beam/app.js"></script>
+</body>
+</html>

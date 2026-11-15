@@ -1,0 +1,16 @@
+{
+  "name": "structural-engineering-calculator",
+  "version": "0.1.0",
+  "description": "Open-source beam, shaft, truss and frame calculators for engineering students. Runs in the browser.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test",
+    "serve": "python3 -m http.server 8000",
+    "bundle": "node tools/bundle.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
