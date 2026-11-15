@@ -33,18 +33,19 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
     hi = Math.max(0, p.y[iMax]); lo = Math.min(0, p.y[iMin]);
     const flat = hi - lo < 1e-300;
     if (flat) { hi = 1; lo = -1; }
+    const Hh = flat ? 100 : H;                   // a quantity that is zero everywhere gets a short strip
     const pad = (hi - lo) * 0.2;
     const g = p.invert ? -1 : 1;                 // geometry sign: -1 puts positive values below zero
     const gHi = Math.max(g * hi, g * lo), gLo = Math.min(g * hi, g * lo);
     const top = gHi + (gHi > 0 ? pad : pad * 0.4), bot = gLo - (gLo < 0 ? pad : pad * 0.4);
-    const py = (v) => M.t + (top - g * v) / (top - bot) * (H - M.t - M.b);
+    const py = (v) => M.t + (top - g * v) / (top - bot) * (Hh - M.t - M.b);
 
     const read = h('div', { class: 'plot-read' });
     const summary = flat ? 'zero everywhere'
       : `max ${fmt(p.y[iMax], 4)} at ${fmt(x[iMax], 4)} ${xUnit}  ·  min ${fmt(p.y[iMin], 4)} at ${fmt(x[iMin], 4)} ${xUnit}`;
     read.textContent = summary;
 
-    const svg = s('svg', { viewBox: `0 0 ${width} ${H}`, height: H, role: 'img',
+    const svg = s('svg', { viewBox: `0 0 ${width} ${Hh}`, height: Hh, role: 'img',
       'aria-label': `${p.title} along the beam. ${summary}` });
     // grid: zero line, the two extremes, and x ticks
     const yTicks = flat ? [0] : [...new Set([0, p.y[iMax], p.y[iMin]])];
@@ -55,8 +56,8 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
     const step = niceStep(x1 - x0, Math.max(3, Math.floor(width / 110)));
     for (let k = Math.ceil(x0 / step); k * step <= x1 + 1e-9; k++) {
       const xv = k * step;
-      svg.append(s('line', { class: 'grid-line', x1: px(xv), x2: px(xv), y1: H - M.b, y2: H - M.b + 4 }));
-      svg.append(s('text', { class: 't-dim', x: px(xv), y: H - 6, 'text-anchor': 'middle', text: fmt(+xv.toPrecision(10), 4) }));
+      svg.append(s('line', { class: 'grid-line', x1: px(xv), x2: px(xv), y1: Hh - M.b, y2: Hh - M.b + 4 }));
+      svg.append(s('text', { class: 't-dim', x: px(xv), y: Hh - 6, 'text-anchor': 'middle', text: fmt(+xv.toPrecision(10), 4) }));
     }
     for (const xm of marks) svg.append(s('line', { class: 'sup-tick', x1: px(xm), x2: px(xm), y1: py(0) - 4, y2: py(0) + 4 }));
 
@@ -77,7 +78,7 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
       if (iMin !== iMax) labelPeak(iMin, !!p.invert);
     }
 
-    const cLine = s('line', { class: 'cursor-line', y1: M.t - 4, y2: H - M.b, visibility: 'hidden' });
+    const cLine = s('line', { class: 'cursor-line', y1: M.t - 4, y2: Hh - M.b, visibility: 'hidden' });
     const cDot = s('circle', { class: 'peak', r: 4, visibility: 'hidden' });
     svg.append(cLine, cDot);
     cursors.push((i) => {
@@ -88,7 +89,7 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
       read.textContent = `x = ${fmt(x[i], 4)} ${xUnit}   ${p.symbol} = ${fmt(p.y[i], 5)} ${p.unit}`;
     });
 
-    const hit = s('rect', { x: M.l, y: 0, width: width - M.l - M.r, height: H, fill: 'transparent' });
+    const hit = s('rect', { x: M.l, y: 0, width: width - M.l - M.r, height: Hh, fill: 'transparent' });
     const move = (e) => {
       const box = svg.getBoundingClientRect();
       const xv = x0 + ((e.clientX - box.left) * (width / box.width) - M.l) / (width - M.l - M.r) * (x1 - x0);

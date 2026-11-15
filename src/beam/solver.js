@@ -10,15 +10,20 @@
 //   XZ       E Iy w''''=  w_z        unknowns w, dw/dx   (beam)
 //
 // Each is solved in two steps:
-//   1. Stiffness method with a node at every support, load and load end.
-//      With work-equivalent nodal loads the nodal displacements and the
-//      reactions are exact for Euler-Bernoulli theory.
+//   1. Reactions. For bending, the method of initial parameters (Macaulay's
+//      method): the unknowns are the deflection and slope at x = 0 and the
+//      support reactions; the equations are the support conditions plus
+//      force and moment balance. Axial and torsion use the stiffness method.
 //   2. Internal forces are then built by walking along the beam from the left
 //      end and summing everything to the left of the cut (the method of
-//      sections), and slope and deflection by integrating M/EI from each
-//      node. Nothing is interpolated, so the diagrams are exact for point,
+//      sections), and slope and deflection by integrating M/EI along the
+//      way. Nothing is interpolated, so the diagrams are exact for point,
 //      uniform and linearly varying loads, and accurate to quadrature
 //      precision for formula loads.
+//
+// As an independent check, each bending plane is also solved by the
+// stiffness method (cubic beam elements, work-equivalent nodal loads) and
+// the two sets of reactions are compared. See `checks.methods`.
 //
 // SIGN CONVENTIONS (see docs/sign-conventions.md)
 //   Axes       right-handed: x along the beam, y up, z toward the viewer.
@@ -38,7 +43,7 @@
 //
 // All quantities are SI (N, m, Pa, rad).
 
-import { integrate, cauchyIntegrals, solveScaled, bisect } from '../core/numeric.js';
+import { integrate, cauchyIntegrals, solveScaled, solveDense, bisect } from '../core/numeric.js';
 
 const DOFS = ['ux', 'uy', 'uz', 'rx', 'ry', 'rz'];
 const num = (v) => (Number.isFinite(v) ? v : 0);
@@ -135,7 +140,9 @@ function evalBar(seg, s) {
 }
 
 // ---------------------------------------------------------------------------
-// Beam problem (one bending plane): deflection and slope at every node.
+// Beam problem (one bending plane), stiffness method. Used as the
+// independent cross-check; exact, but loses precision when two nodes are
+// extremely close together, so it is only compared when they are not.
 // ---------------------------------------------------------------------------
 function solveBending({ nodes, EI, fixedT, fixedR, springT, springR, P, C, segLoads }) {
   const n = nodes.length, nd = 2 * n;
@@ -206,6 +213,138 @@ function solveBending({ nodes, EI, fixedT, fixedR, springT, springR, P, C, segLo
   return { d, R, segs, closure: { V, M } };
 }
 
+/**
+ * The same bending problem solved by the method of initial parameters
+ * (Macaulay's method, as done by hand): the unknowns are the deflection and
+ * slope at x = 0 and the support reactions, and the equations are the
+ * support conditions plus force and moment balance. Unlike the stiffness
+ * method it has no elements, so it stays accurate when two positions are
+ * extremely close together (a load a hair's width from a support).
+ */
+function solveBendingDirect({ nodes, EI, fixedT, fixedR, springT, springR, P, C, segLoads }) {
+  const n = nodes.length, len = nodes[n - 1] - nodes[0];
+  // March along the beam from a given start state with given nodal forces/couples.
+  const march = (v0, th0, Pn, Cn, keep) => {
+    let V = 0, M = 0, th = th0, v = v0;
+    const vN = new Array(n), thN = new Array(n), segs = [];
+    for (let j = 0; j < n; j++) {
+      vN[j] = v; thN[j] = th;
+      V += Pn[j]; M -= Cn[j];
+      if (j === n - 1) break;
+      const h = nodes[j + 1] - nodes[j];
+      if (keep) segs.push({ xa: nodes[j], h, Va: V, Ma: M, tha: th, va: v, EI, loads: segLoads[j] });
+      const I = sumIntegrals(segLoads[j], h);
+      v += th * h + (M * h * h / 2 + V * h ** 3 / 6 + I[3]) / EI;
+      th += (M * h + V * h * h / 2 + I[2]) / EI;
+      M += V * h + I[1];
+      V += I[0];
+    }
+    return { vN, thN, V, M, segs };
+  };
+  const part = march(0, 0, P, C, false);          // applied loads only, starting flat
+
+  // Unknowns, all scaled to a length: a = v(0), b = slope(0) * len,
+  // r = R len^3 / EI for each force reaction, c = C len^2 / EI for each couple.
+  const unknowns = [];
+  for (let i = 0; i < n; i++) {
+    if (fixedT[i] || springT[i] > 0) unknowns.push({ node: i, couple: false });
+    if (fixedR[i] || springR[i] > 0) unknowns.push({ node: i, couple: true });
+  }
+  const m = unknowns.length + 2;
+  const xi = nodes.map((x) => (x - nodes[0]) / len);
+  const A = [], rhs = [];
+  const deflRow = (sNode) => {                     // v at node sNode, in terms of the unknowns
+    const row = new Array(m).fill(0);
+    row[0] = 1; row[1] = xi[sNode];
+    unknowns.forEach((q, k) => {
+      const d = xi[sNode] - xi[q.node];
+      if (d > 0) row[k + 2] = q.couple ? -d * d / 2 : d ** 3 / 6;
+    });
+    return row;
+  };
+  const slopeRow = (sNode) => {                    // slope * len at node sNode
+    const row = new Array(m).fill(0);
+    row[1] = 1;
+    unknowns.forEach((q, k) => {
+      const d = xi[sNode] - xi[q.node];
+      if (d > 0) row[k + 2] = q.couple ? -d : d * d / 2;
+    });
+    return row;
+  };
+  unknowns.forEach((q, k) => {
+    const i = q.node;
+    if (!q.couple) {
+      const row = deflRow(i), known = -part.vN[i];
+      if (fixedT[i]) { A.push(row); rhs.push(known); } else {      // spring: R + k v = 0
+        const kap = springT[i] * len ** 3 / EI, sc = Math.max(1, kap);
+        const r2 = row.map((v) => v * kap / sc); r2[k + 2] += 1 / sc;
+        A.push(r2); rhs.push(known * kap / sc);
+      }
+    } else {
+      const row = slopeRow(i), known = -part.thN[i] * len;
+      if (fixedR[i]) { A.push(row); rhs.push(known); } else {      // rotational spring: C + k theta = 0
+        const kap = springR[i] * len / EI, sc = Math.max(1, kap);
+        const r2 = row.map((v) => v * kap / sc); r2[k + 2] += 1 / sc;
+        A.push(r2); rhs.push(known * kap / sc);
+      }
+    }
+  });
+  const force = new Array(m).fill(0), moment = new Array(m).fill(0);
+  unknowns.forEach((q, k) => {
+    if (q.couple) moment[k + 2] = -1; else { force[k + 2] = 1; moment[k + 2] = 1 - xi[q.node]; }
+  });
+  A.push(force); rhs.push(-part.V * len ** 3 / EI);
+  A.push(moment); rhs.push(-part.M * len * len / EI);
+
+  const sol = solveDense(A, rhs);
+  if (sol.singular) return { error: 'unstable' };
+  const x = sol.x;
+  let R, full;
+  // Solve, march, and polish: the free response (no supports) can be far
+  // larger than the real deflection, so the first answer loses digits to
+  // cancellation. Two rounds of iterative refinement on the same equations
+  // recover them.
+  for (let round = 0; ; round++) {
+    R = new Array(2 * n).fill(0);
+    const Ptot = P.slice(), Ctot = C.slice();
+    unknowns.forEach((q, k) => {
+      if (q.couple) { R[2 * q.node + 1] = x[k + 2] * EI / (len * len); Ctot[q.node] += R[2 * q.node + 1]; }
+      else { R[2 * q.node] = x[k + 2] * EI / len ** 3; Ptot[q.node] += R[2 * q.node]; }
+    });
+    full = march(x[0], x[1] / len, Ptot, Ctot, true);
+    if (round === 2) break;
+    const res = unknowns.map((q, k) => {
+      const i = q.node;
+      if (!q.couple) {
+        if (fixedT[i]) return -full.vN[i];
+        const kap = springT[i] * len ** 3 / EI;
+        return -(x[k + 2] + kap * full.vN[i]) / Math.max(1, kap);
+      }
+      if (fixedR[i]) return -full.thN[i] * len;
+      const kap = springR[i] * len / EI;
+      return -(x[k + 2] + kap * full.thN[i] * len) / Math.max(1, kap);
+    });
+    res.push(-full.V * len ** 3 / EI, -full.M * len * len / EI);
+    const fix = solveDense(A, res);
+    if (fix.singular) break;
+    for (let k = 0; k < m; k++) x[k] += fix.x[k];
+  }
+  const d = new Array(2 * n);
+  for (let i = 0; i < n; i++) { d[2 * i] = full.vN[i]; d[2 * i + 1] = full.thN[i]; }
+  // How well the support conditions are met. The yardstick is the larger of
+  // the real response and the free response (the beam with its supports
+  // removed), since rounding error scales with the latter.
+  const mids = full.segs.flatMap((sg) => [0.25, 0.5, 0.75].map((t) => evalBending(sg, sg.h * t)));
+  const vBig = Math.max(...full.vN.map(Math.abs), ...part.vN.map(Math.abs), ...mids.map((e) => Math.abs(e.defl)), 1e-300);
+  const thBig = Math.max(...full.thN.map(Math.abs), ...part.thN.map(Math.abs), ...mids.map((e) => Math.abs(e.slope)), 1e-300);
+  let miss = 0;
+  for (let i = 0; i < n; i++) {
+    if (fixedT[i]) miss = Math.max(miss, Math.abs(full.vN[i]) / vBig);
+    if (fixedR[i]) miss = Math.max(miss, Math.abs(full.thN[i]) / thBig);
+  }
+  return { d, R, segs: full.segs, closure: { V: full.V, M: full.M }, miss };
+}
+
 function evalBending(seg, s) {
   const I = sumIntegrals(seg.loads, s);
   const { Va, Ma, tha, va, EI } = seg;
@@ -271,6 +410,8 @@ export function solveBeam(input, opts = {}) {
   for (const x of raw) if (!nodes.length || x - nodes[nodes.length - 1] > tol) nodes.push(x);
   nodes[nodes.length - 1] = L;
   const n = nodes.length;
+  let minGap = L;
+  for (let i = 1; i < n; i++) minGap = Math.min(minGap, nodes[i] - nodes[i - 1]);
   const nodeOf = (x) => {
     let best = 0;
     for (let i = 1; i < n; i++) if (Math.abs(nodes[i] - x) < Math.abs(nodes[best] - x)) best = i;
@@ -381,11 +522,19 @@ export function solveBeam(input, opts = {}) {
     if (stiff[pl.id] === null && hasSpring([pl.t, pl.r])) {
       errors.push(`A spring is used, so ${need[pl.id]} are needed.`); continue;
     }
-    const r = solveBending({
+    const problem = {
       nodes, EI: stiff[pl.id] ?? 1,
       fixedT: fixed[pl.t], fixedR: fixed[pl.r], springT: spring[pl.t], springR: spring[pl.r],
       P: pl.P, C: pl.C, segLoads: segLoads[pl.dir],
-    });
+    };
+    const r = solveBendingDirect(problem);
+    if (!r.error && minGap >= 1e-3 * L) {
+      // Second opinion from the stiffness method.
+      const k = solveBending(problem);
+      const big = Math.max(...r.R.map(Math.abs), ...pl.P.map(Math.abs), 1e-300);
+      const bigM = Math.max(big * L, ...pl.C.map(Math.abs));
+      r.methods = k.error ? 1 : Math.max(...r.R.map((v, i) => Math.abs(v - k.R[i]) / (i % 2 ? bigM : big)));
+    }
     if (r.error) {
       const nT = fixed[pl.t].filter(Boolean).length + spring[pl.t].filter((k) => k > 0).length;
       const nR = fixed[pl.r].filter(Boolean).length + spring[pl.r].filter((k) => k > 0).length;
@@ -444,13 +593,15 @@ export function solveBeam(input, opts = {}) {
     const sList = [];
     for (let k = 0; k <= m; k++) sList.push(h * k / m);
     const extra = [];
-    for (const key of ['Vy', 'Vz', 'slopeXY', 'slopeXZ', 'N', 'T']) {
-      let prev = evalSeg(j, 0)[key];
+    // d(Mtotal^2)/dx = 2 (Mz Vy + My Vz), so its zero is where the total moment peaks.
+    const probes = [...['Vy', 'Vz', 'slopeXY', 'slopeXZ', 'N', 'T'].map((key) => (e) => e[key]), (e) => e.Mz * e.Vy + e.My * e.Vz];
+    for (const probe of probes) {
+      let prev = probe(evalSeg(j, 0));
       if (prev === null) continue;
       for (let k = 1; k <= m; k++) {
-        const cur = evalSeg(j, sList[k])[key];
+        const cur = probe(evalSeg(j, sList[k]));
         if (prev !== 0 && cur !== 0 && (prev < 0) !== (cur < 0)) {
-          extra.push(bisect((s) => evalSeg(j, s)[key], sList[k - 1], sList[k], prev));
+          extra.push(bisect((s) => probe(evalSeg(j, s)), sList[k - 1], sList[k], prev));
         }
         prev = cur;
       }
@@ -499,6 +650,12 @@ export function solveBeam(input, opts = {}) {
     Vy: results.xy ? results.xy.closure.V : 0, Mz: results.xy ? results.xy.closure.M : 0,
     Vz: results.xz ? results.xz.closure.V : 0, My: results.xz ? results.xz.closure.M : 0,
     N: results.axial ? results.axial.closure : 0, T: results.torsion ? results.torsion.closure : 0,
+    // Largest relative gap between the support conditions and the solution.
+    supports: Math.max(results.xy?.miss ?? 0, results.xz?.miss ?? 0),
+    // Largest relative difference between the two solution methods' reactions
+    // (null when positions are too close together for the comparison to be fair).
+    methods: [results.xy?.methods, results.xz?.methods].some((v) => v !== undefined)
+      ? Math.max(results.xy?.methods ?? 0, results.xz?.methods ?? 0) : null,
   };
 
   return {

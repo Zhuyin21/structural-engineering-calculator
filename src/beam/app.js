@@ -11,7 +11,7 @@ import { solveBeam } from './solver.js';
 import { drawPlane } from './draw.js';
 import {
   EXAMPLES, SUPPORT_TYPES, DIRECTIONS, PROFILES, emptyModel, toSolverInput, sectionSI,
-  stressSummary, convertModel, materialPreset, shapeDefaults, parseNum,
+  stressSummary, convertModel, materialPreset, shapeDefaults, parseNum, modelNotes,
 } from './model.js';
 
 const REPO_URL = 'https://github.com/Zhuyin21/structural-engineering-calculator';
@@ -36,9 +36,11 @@ const Q = {
   u: { title: 'Axial displacement', sym: 'u', kind: 'deflection' },
 };
 const TABS = {
-  xy: { label: 'XY plane', keys: ['Vy', 'Mz', 'slopeXY', 'v'] },
-  xz: { label: 'XZ plane', keys: ['Vz', 'My', 'slopeXZ', 'w'] },
-  combined: { label: 'Combined', keys: ['Mtotal', 'T', 'twist', 'N', 'u'] },
+  xy: { label: 'Beam Diagrams (XY)', plane: 'XY', keys: ['Vy', 'Mz', 'slopeXY', 'v'] },
+  xz: { label: 'Beam Diagrams (XZ)', plane: 'XZ', keys: ['Vz', 'My', 'slopeXZ', 'w'] },
+  // Quantities that do not belong to one plane. Total moment, torque and axial
+  // force are always drawn here, even when they are zero.
+  combined: { label: '3D Beam Diagrams', keys: ['Mtotal', 'T', 'N', 'twist', 'u'] },
 };
 
 // ---------------------------------------------------------------------------
@@ -271,7 +273,8 @@ function solve(event, quiet = false) {
   if (!result.ok) { if (!quiet) showMessages('error', 'The beam cannot be solved yet:', result.errors); return; }
   solved = { result, section };
   stale = false;
-  showMessages('note', null, [...result.warnings, ...result.notes]);
+  const len = (v) => `${fmt(v / U().length.f, 4)} ${U().length.label}`;
+  showMessages('note', null, [...result.warnings, ...result.notes, ...modelNotes(input, section, result, len)]);
   renderResults();
   drawViews();
 }
@@ -326,10 +329,9 @@ function renderResults() {
   const plots = h('div', { class: 'plots', id: 'plots' });
   body.append(tabBar, plots);
 
-  const keys = activeKeys(tab);
+  const keys = tab === 'combined' ? [...new Set(['Mtotal', 'T', 'N', ...activeKeys(tab)])].sort((a, b) => TABS.combined.keys.indexOf(a) - TABS.combined.keys.indexOf(b)) : activeKeys(tab);
   if (!keys.length) {
-    const why = tab === 'combined' ? 'There is nothing to combine yet.' : `No loads act in the ${TABS[tab].label}.`;
-    plots.append(h('div', { class: 'plot-empty', text: why }));
+    plots.append(h('div', { class: 'plot-empty', text: `No loads act in the ${TABS[tab].plane} plane.` }));
   } else {
     renderPlotGroup(plots, {
       x: d.x, xUnit: u.length.label, marks: r.reactions.map((q) => q.x / u.length.f),
@@ -357,15 +359,18 @@ function renderResultTables(d) {
       .map(([k, dof, kind]) => (q.held[dof] ? cell(shown(q[k], kind, sc)) : dash()))));
   const worst = Math.max(Math.abs(r.checks.Vy), Math.abs(r.checks.Vz), Math.abs(r.checks.N)) / (sc.force || 1);
   const worstM = Math.max(Math.abs(r.checks.Mz), Math.abs(r.checks.My), Math.abs(r.checks.T)) / (sc.moment || 1);
-  const balanced = Math.max(worst, worstM) < 1e-7;
+  const balanced = Math.max(worst, worstM) < 1e-7 && r.checks.supports < 1e-7;
+  const agree = r.checks.methods === null ? null : r.checks.methods < 1e-7;
   const reactions = h('section', { class: 'full' }, h('h3', { text: 'Support reactions' }),
     h('div', { class: 'scroll-x' }, h('table', { class: 'data' },
       h('thead', {}, h('tr', {}, th('x', u.length.label), th('Fx', u.force.label), th('Fy', u.force.label), th('Fz', u.force.label),
         th('T', u.moment.label), th('My', u.moment.label), th('Mz', u.moment.label))),
       h('tbody', {}, reactRows.length ? reactRows : h('tr', {}, h('td', { colSpan: 7, text: 'No supports carry load.' }))))),
-    h('p', { class: balanced ? 'check-ok' : 'check-bad', text: balanced
-      ? 'Equilibrium check passed: forces and moments close to zero at the right end.'
-      : 'Equilibrium check failed. Please report this model.' }));
+    h('p', { class: balanced && agree !== false ? 'check-ok' : 'check-bad', text: !balanced
+      ? 'Equilibrium check failed. Please report this model.'
+      : agree === false ? 'The two solution methods disagree. Please report this model.'
+      : agree ? 'Checks passed: forces and moments balance, and two independent solution methods give the same reactions.'
+      : 'Check passed: forces and moments balance.' }));
 
   // Extremes
   const allKeys = [...new Set(Object.keys(TABS).flatMap((t) => activeKeys(t)))];

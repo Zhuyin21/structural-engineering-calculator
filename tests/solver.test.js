@@ -23,7 +23,10 @@ function solve(input) {
   assert.ok(r.ok, r.errors && r.errors.join(' '));
   // Every internal force must close to zero past the right end.
   const big = Math.max(...Object.values(r.extremes).filter(Boolean).map((e) => e.abs), 1);
-  for (const [k, v] of Object.entries(r.checks)) assert.ok(Math.abs(v) < 1e-7 * big, `closure ${k} = ${v}`);
+  for (const k of ['Vy', 'Mz', 'Vz', 'My', 'N', 'T']) assert.ok(Math.abs(r.checks[k]) < 1e-7 * big, `closure ${k} = ${r.checks[k]}`);
+  // Support conditions are met, and the two independent bending solvers agree.
+  assert.ok(r.checks.supports < 1e-9, `support conditions missed by ${r.checks.supports}`);
+  assert.ok(r.checks.methods === null || r.checks.methods < 1e-9, `the two methods differ by ${r.checks.methods}`);
   return r;
 }
 
@@ -308,6 +311,46 @@ test('deflection and slope are continuous across every load and support', () => 
   // Global equilibrium in y from the reactions.
   const sumFy = r.reactions.reduce((s, q) => s + q.Fy, 0);
   close(sumFy, 4e3 - 3e3 + (1e3 + 5e3) / 2 * 4);
+});
+
+test('positions a hair apart are handled (load next to a support, tiny overhang)', () => {
+  const L = 6, Pv = 1e3;
+  for (const gap of [1e-3, 1e-6, 1e-9]) {
+    const r = solve({ L, supports: [{ x: 0, ...PIN }, { x: L - gap, ...ROLLER }], pointLoads: [{ x: 3, Fy: -Pv }, { x: 3 + gap, Fy: -Pv }] });
+    close(r.reactions[0].Fy + r.reactions[1].Fy, 2 * Pv);
+    close(r.at(3).v, -2 * Pv * L ** 3 / (48 * E * Iz), 3 * gap + 1e-9);
+    // The stiffness cross-check is skipped when positions are this close (and not merged).
+    if (gap === 1e-6) assert.equal(r.checks.methods, null);
+  }
+  // A load just left of an interior support goes almost entirely into that support.
+  const r = solve({ L: 8, supports: [{ x: 0, ...PIN }, { x: 4, ...ROLLER }, { x: 8, ...ROLLER }], pointLoads: [{ x: 4 - 1e-7, Fy: -9e3 }] });
+  close(r.reactions[1].Fy, 9e3, 1e-6);
+});
+
+test('a formula with a jump equals the same load entered as a partial uniform row', () => {
+  const L = 10, sup = [{ x: 0, ...PIN }, { x: L, ...ROLLER }];
+  const rows = solve({ L, supports: sup, distLoads: [{ x1: 2, x2: 6, dir: 'y', w1: -4e3, w2: -4e3 }] });
+  const jump = solve({ L, supports: sup, distLoads: [{ x1: 0, x2: L, dir: 'y', w: (x) => (x >= 2 && x <= 6 ? -4e3 : 0) }] });
+  close(jump.reactions[0].Fy, rows.reactions[0].Fy, 1e-10);
+  close(jump.extremes.Mz.max, rows.extremes.Mz.max, 1e-10);
+  close(jump.extremes.v.min, rows.extremes.v.min, 1e-10);
+});
+
+test('many spans: both solution methods still agree', () => {
+  const n = 12, span = 2.5, sup = [{ x: 0, ...PIN }];
+  for (let i = 1; i <= n; i++) sup.push({ x: i * span, ...ROLLER });
+  const r = solve({ L: n * span, supports: sup, distLoads: [{ x1: 0, x2: n * span, dir: 'y', w1: -3e3, w2: -3e3 }], pointLoads: [{ x: 3.1, Fy: -7e3, Fz: 2e3 }] });
+  assert.ok(r.checks.methods < 1e-9);
+  close(r.reactions.reduce((s, q) => s + q.Fy, 0), 3e3 * n * span + 7e3);
+});
+
+test('peak of the total bending moment is located exactly', () => {
+  const r = solve({ L: 5, supports: [{ x: 0, ...PIN }, { x: 5, ...ROLLER }],
+    distLoads: [{ x1: 0, x2: 5, dir: 'y', w1: -3e3, w2: -1e3 }, { x1: 1, x2: 4, dir: 'z', w1: 0, w2: 2e3 }] });
+  let best = 0;
+  for (let i = 0; i <= 20000; i++) best = Math.max(best, r.at(5 * i / 20000).Mtotal);
+  assert.ok(r.extremes.Mtotal.max >= best - 1e-9 * best);
+  close(r.extremes.Mtotal.max, best, 1e-8);
 });
 
 test('superposition holds', () => {

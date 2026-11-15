@@ -22,9 +22,10 @@ plus axial force and torque.
 - **Units**: force (N, kN, lbf, kip), length (m, mm, in, ft) and stress
   (Pa, MPa, psi, ksi) are chosen independently, with a separate unit for
   section sizes and deflection, and GPa or ksi for E.
-- **Results**: support reactions, shear, bending moment, slope and
-  deflection in each plane, total bending moment, torque, angle of twist,
-  axial force, peak stresses, values at any position, and CSV export.
+- **Results**: support reactions; shear, bending moment, slope and
+  deflection for each plane (Beam Diagrams XY and XZ); total bending moment,
+  torque, axial force and angle of twist (3D Beam Diagrams); peak stresses,
+  values at any position, and CSV export.
 
 The workflow is set up, then **Solve**. The plane views redraw as you type;
 results grey out when the beam changes until you solve again.
@@ -53,14 +54,22 @@ Because the beam is straight and y, z are principal axes of the section, the
 problem splits into four independent ones: axial, torsion, bending in XY and
 bending in XZ. Each is solved in two steps.
 
-1. **Stiffness method** with a node at every support, load and load end.
-   With work-equivalent nodal loads this gives exact nodal displacements and
-   reactions for Euler-Bernoulli theory, including statically indeterminate
-   beams and spring supports.
+1. **Reactions.** Bending uses the method of initial parameters (Macaulay's
+   method, the one done by hand): the unknowns are the deflection and slope
+   at x = 0 and the support reactions, and the equations are the support
+   conditions plus force and moment balance. It handles statically
+   indeterminate beams and springs, and has no elements, so a load a hair's
+   width from a support is not a problem. Axial and torsion use the stiffness
+   method.
 2. **Method of sections.** Internal forces are built by summing everything to
-   the left of the cut, and slope and deflection by integrating M/EI from
-   each node. Point, uniform and linear loads are integrated in closed form;
-   formula loads by Gauss-Legendre quadrature.
+   the left of the cut, and slope and deflection by integrating M/EI along
+   the beam. Point, uniform and linear loads are integrated in closed form;
+   formula loads by adaptive Gauss-Legendre quadrature, which also copes with
+   jumps such as `step(x - 2)`.
+
+Every solve is checked twice: the internal forces must return to zero at the
+right end, and each bending plane is solved again by the stiffness method
+(cubic beam elements) to confirm the reactions. The page reports both.
 
 Sign conventions are in [docs/sign-conventions.md](docs/sign-conventions.md).
 What the solver has been checked against is in

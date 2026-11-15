@@ -197,6 +197,33 @@ export function stressSummary(result, section) {
   return best;
 }
 
+/**
+ * Things worth telling the student about a solved model that are not errors.
+ * `len` formats a length given in metres.
+ */
+export function modelNotes(input, section, result, len = (v) => `${v} m`) {
+  const notes = [];
+  const tol = 1e-9 * input.L;
+  const xs = [...input.supports.map((s) => s.x)].sort((a, b) => a - b);
+  const twins = xs.filter((x, i) => i > 0 && x - xs[i - 1] <= tol);
+  for (const x of [...new Set(twins)]) notes.push(`Two supports share the position x = ${len(x)}. They act together as one support, with one combined reaction.`);
+
+  // Euler-Bernoulli theory leaves out shear deformation, which matters for stubby beams.
+  const p = section?.props;
+  const distinct = xs.filter((x, i) => i === 0 || x - xs[i - 1] > tol);
+  if (p && distinct.length) {
+    let span = Infinity;
+    if (distinct.length === 1) span = Math.max(distinct[0], input.L - distinct[0]);
+    else for (let i = 1; i < distinct.length; i++) span = Math.min(span, distinct[i] - distinct[i - 1]);
+    const depth = Math.max(result.active.xy && result.available.xy ? 2 * (p.cy || 0) : 0,
+      result.active.xz && result.available.xz ? 2 * (p.cz || 0) : 0);
+    if (depth > 0 && span / depth < 8) {
+      notes.push(`This beam is short for its depth (span of ${len(span)} is ${(span / depth).toFixed(1)} times the section depth). The calculator ignores shear deformation, so the real deflection will be noticeably larger; reactions, shear and moment are not affected${distinct.length > 2 ? ' much' : ''}.`);
+    }
+  }
+  return notes;
+}
+
 // --- unit changes ----------------------------------------------------------
 const FIELD_KINDS = {
   supports: { x: 'length', ky: 'kTrans', kz: 'kTrans' },

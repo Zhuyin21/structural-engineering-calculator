@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gaussLegendre, integrate, cauchyIntegrals, solveScaled, bisect } from '../src/core/numeric.js';
+import { gaussLegendre, integrate, cauchyIntegrals, solveScaled, solveDense, bisect } from '../src/core/numeric.js';
 import { compile } from '../src/core/expr.js';
 import { toSI, fromSI, convert, unitTable, fmt, STRESS, UNIT_PRESETS } from '../src/core/units.js';
 import { sectionProps, peakStress } from '../src/core/sections.js';
-import { EXAMPLES, toSolverInput, convertModel, stressSummary, emptyModel } from '../src/beam/model.js';
+import { EXAMPLES, toSolverInput, convertModel, stressSummary, emptyModel, modelNotes } from '../src/beam/model.js';
 import { solveBeam } from '../src/beam/solver.js';
 
 const close = (a, b, rel = 1e-10) => assert.ok(Math.abs(a - b) <= rel * Math.max(Math.abs(b), 1e-300), `expected ${b}, got ${a}`);
@@ -21,6 +21,14 @@ test('numeric: quadrature, repeated integrals, solver, root finder', () => {
   const s = solveScaled([[4, 1], [1, 3]], [1, 2]);
   close(s.x[0], 1 / 11); close(s.x[1], 7 / 11);
   assert.equal(solveScaled([[1, 1], [1, 1]], [1, 1]).singular, true);
+  const g2 = solveDense([[0, 2e9, 1e9], [3, 0, 1], [1e-6, 1e-6, 0]], [5e9, 5, 3e-6]);   // badly scaled rows, zero pivot
+  close(g2.x[0], 1.2); close(g2.x[1], 1.8); close(g2.x[2], 1.4);
+  assert.equal(solveDense([[1, 2], [2, 4]], [1, 2]).singular, true);
+  // a jump and a kink are integrated as accurately as a smooth function
+  close(integrate((x) => (x > 0.3 ? 2 : 0), 0, 1), 1.4, 1e-11);
+  close(integrate(Math.abs, -1, 2), 2.5, 1e-11);
+  const Ij = cauchyIntegrals((x) => (x >= 1 ? 6 : 0), 0, 3);   // 6 on [1, 3]
+  [12, 12, 8, 4].forEach((v, k) => close(Ij[k], v, 1e-10));
   close(bisect((x) => x * x - 2, 0, 2), Math.SQRT2, 1e-12);
 });
 
@@ -117,7 +125,7 @@ test('model: the answer does not depend on the units used to enter it', () => {
       const r = solveBeam(input);
       for (const k of ['Mz', 'Vy', 'v', 'Mtotal', 'T']) {
         if (!ref.extremes[k]) continue;
-        const a = r.extremes[k].atAbs, b = ref.extremes[k].atAbs;
+        const a = r.extremes[k].abs, b = ref.extremes[k].abs;      // magnitude: a symmetric diagram has two equal peaks
         assert.ok(Math.abs(a - b) <= 1e-8 * Math.max(Math.abs(b), 1e-9), `${ex.title} in ${name}: ${k} ${a} vs ${b}`);
       }
     }
@@ -136,6 +144,20 @@ test('model: US customary textbook case', () => {
   close(fromSI(r.extremes.Mz.max, 'moment', m.units), 100, 1e-9);                 // wL^2/8 = 100 kip-ft
   const dIn = 5 * (2 / 12) * 240 ** 4 / (384 * 29000 * 800);                      // inches
   close(fromSI(-r.extremes.v.min, 'deflection', m.units), dIn, 1e-9);
+});
+
+test('model: notes for a stubby beam and for supports that share a position', () => {
+  const m = structuredClone(EXAMPLES[0]);                 // 6 m span, 200 mm deep: slender
+  let s = toSolverInput(m);
+  assert.deepEqual(modelNotes(s.input, s.section, solveBeam(s.input)), []);
+  m.length = 1.2; m.supports[1].x = 1.2; m.pointLoads[0].x = 0.6;
+  m.section.dims = { b: 100, h: 400 };                    // span / depth = 3
+  m.supports.push({ type: 'roller', x: 1.2 });
+  s = toSolverInput(m);
+  const notes = modelNotes(s.input, s.section, solveBeam(s.input), (v) => `${v} m`);
+  assert.equal(notes.length, 2);
+  assert.match(notes[0], /share the position x = 1.2 m/);
+  assert.match(notes[1], /3\.0 times the section depth/);
 });
 
 test('model: helpful input errors and blank rows', () => {

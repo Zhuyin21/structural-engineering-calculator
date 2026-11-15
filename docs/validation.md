@@ -31,9 +31,16 @@ signs are both asserted, to a relative tolerance of 1e-9 unless noted.
 | Sections | I, A and J formulas against independent sums and tabulated torsion constants |
 | Stresses | Mc/I for one and two planes plus axial, VQ/It for a rectangle and circle, Tr/J |
 
-Every solve also runs an equilibrium check: after the last node, the shear,
-moment, axial force and torque must return to zero. The page reports the
-outcome under the reactions table.
+| Two methods | every bending case above is solved by the method of initial parameters and again by the stiffness method; reactions must agree to 1e-9 |
+| Close positions | loads and supports 1e-3 to 1e-9 m apart; a load 1e-7 m from an interior support |
+| Formula with a jump | equals the same load entered as a partial uniform row, to 1e-10 |
+| Many spans | 12 spans with loads in both planes |
+| Peak total moment | located to 1e-8 against a fine scan, with distributed loads in both planes |
+
+Every solve in the page runs the same two checks: the shear, moment, axial
+force and torque must return to zero at the right end, and the two bending
+methods must give the same reactions. The outcome is shown under the
+reactions table.
 
 Not yet validated against an independent program (for example a commercial
 beam solver). Comparing a set of textbook problems side by side is a good

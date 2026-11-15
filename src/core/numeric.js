@@ -27,18 +27,45 @@ export function gaussLegendre(n) {
 }
 
 const GL = gaussLegendre(12);
-const PANELS = 3;
+const MAX_DEPTH = 48;
 
-/** Integral of f over [a, b] (composite 12-point Gauss-Legendre). */
-export function integrate(f, a, b, panels = PANELS) {
+// Adaptive rule shared by the two integrators below. `panel(a, b)` returns the
+// 12-point Gauss-Legendre estimate on [a, b] as an array (one entry per
+// integral wanted). A panel is accepted when splitting it in two no longer
+// changes the answer; otherwise each half is refined. Smooth loads are
+// accepted at once, and a load with a jump or a kink (step(), abs(), min(),
+// max()) is bisected down onto the jump, so it is integrated just as well.
+function adaptive(panel, a, b, scale) {
+  const refine = (lo, hi, whole, depth) => {
+    const mid = 0.5 * (lo + hi);
+    const left = panel(lo, mid), right = panel(mid, hi);
+    let ok = depth >= MAX_DEPTH || mid === lo || mid === hi;
+    if (!ok) {
+      ok = true;
+      for (let k = 0; k < whole.length; k++) {
+        if (Math.abs(left[k] + right[k] - whole[k]) > 1e-13 * scale[k]) { ok = false; break; }
+      }
+    }
+    if (ok) return left.map((v, k) => v + right[k]);
+    const L = refine(lo, mid, left, depth + 1), R = refine(mid, hi, right, depth + 1);
+    return L.map((v, k) => v + R[k]);
+  };
+  return refine(a, b, panel(a, b), 0);
+}
+
+/** Integral of f over [a, b], adaptive, accurate for smooth and piecewise-smooth f. */
+export function integrate(f, a, b) {
   if (b === a) return 0;
-  const hp = (b - a) / panels;
-  let sum = 0;
-  for (let p = 0; p < panels; p++) {
-    const mid = a + (p + 0.5) * hp, half = hp / 2;
-    for (let i = 0; i < GL.x.length; i++) sum += GL.w[i] * f(mid + half * GL.x[i]);
-  }
-  return sum * hp / 2;
+  let big = 0;
+  const panel = (lo, hi) => {
+    const mid = 0.5 * (lo + hi), half = 0.5 * (hi - lo);
+    let sum = 0;
+    for (let i = 0; i < GL.x.length; i++) { const v = f(mid + half * GL.x[i]); sum += GL.w[i] * v; big = Math.max(big, Math.abs(v)); }
+    return [sum * half];
+  };
+  const first = panel(a, b);
+  const scale = [Math.max(big * Math.abs(b - a), Math.abs(first[0]), 1e-300)];
+  return adaptive(panel, a, b, scale)[0];
 }
 
 /**
@@ -47,20 +74,25 @@ export function integrate(f, a, b, panels = PANELS) {
  * (Cauchy's formula for repeated integration.) I_0 is the load resultant,
  * I_1 its moment about the cut, and I_2, I_3 feed slope and deflection.
  */
-export function cauchyIntegrals(w, xa, s, panels = PANELS) {
-  const I = [0, 0, 0, 0];
-  if (s === 0) return I;
-  const hp = s / panels;
-  for (let p = 0; p < panels; p++) {
-    const mid = (p + 0.5) * hp, half = hp / 2;
+export function cauchyIntegrals(w, xa, s) {
+  if (s === 0) return [0, 0, 0, 0];
+  let big = 0;
+  const panel = (lo, hi) => {
+    const mid = 0.5 * (lo + hi), half = 0.5 * (hi - lo);
+    const I = [0, 0, 0, 0];
     for (let i = 0; i < GL.x.length; i++) {
       const t = mid + half * GL.x[i];
-      const f = GL.w[i] * half * w(xa + t);
-      const d = s - t;
+      const v = w(xa + t);
+      big = Math.max(big, Math.abs(v));
+      const f = GL.w[i] * half * v, d = s - t;
       I[0] += f; I[1] += f * d; I[2] += f * d * d / 2; I[3] += f * d * d * d / 6;
     }
-  }
-  return I;
+    return I;
+  };
+  panel(0, s);
+  const base = Math.max(big, 1e-300) * s;
+  const scale = [base, base * s, base * s * s / 2, base * s ** 3 / 6];
+  return adaptive(panel, 0, s, scale);
 }
 
 /**
@@ -99,6 +131,42 @@ export function solveScaled(K, F, tol = 1e-10) {
     y[r] = s / A[r][r];
   }
   return { x: y.map((v, i) => v / d[i]), singular: false };
+}
+
+/**
+ * Solve A x = b for a small dense general (not necessarily symmetric)
+ * system: rows are scaled to unit size, then Gaussian elimination with
+ * partial pivoting. Returns { x, singular }.
+ */
+export function solveDense(A0, b0, tol = 1e-11) {
+  const n = b0.length;
+  if (n === 0) return { x: [], singular: false };
+  const A = A0.map((row) => row.slice()), b = b0.slice();
+  for (let r = 0; r < n; r++) {
+    const m = Math.max(...A[r].map(Math.abs));
+    if (!(m > 0)) return { x: null, singular: true };
+    for (let c = 0; c < n; c++) A[r][c] /= m;
+    b[r] /= m;
+  }
+  for (let c = 0; c < n; c++) {
+    let piv = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[piv][c])) piv = r;
+    if (Math.abs(A[piv][c]) < tol) return { x: null, singular: true };
+    if (piv !== c) { [A[piv], A[c]] = [A[c], A[piv]]; [b[piv], b[c]] = [b[c], b[piv]]; }
+    for (let r = c + 1; r < n; r++) {
+      const f = A[r][c] / A[c][c];
+      if (f === 0) continue;
+      for (let k = c; k < n; k++) A[r][k] -= f * A[c][k];
+      b[r] -= f * b[c];
+    }
+  }
+  const x = new Array(n);
+  for (let r = n - 1; r >= 0; r--) {
+    let sum = b[r];
+    for (let k = r + 1; k < n; k++) sum -= A[r][k] * x[k];
+    x[r] = sum / A[r][r];
+  }
+  return { x, singular: false };
 }
 
 /** Root of f in [a, b] by bisection; f(a) and f(b) must differ in sign. */
