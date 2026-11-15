@@ -125,7 +125,7 @@ export const GEOMETRIES = {
   },
   'bar-notch': {
     label: 'Rectangular bar with notches',
-    dims: [['w', 'Full width w'], ['d', 'Width between the notches d'], ['r', 'Notch radius r'], ['t', 'Thickness t']],
+    dims: [['w', 'Full width w'], ['d', 'Width at the notches d'], ['r', 'Notch radius r'], ['t', 'Thickness t']],
     check: ({ w, d }) => (d >= w ? 'The width between the notches must be less than the full width.' : null),
     loads: {
       F: { figure: 'A-15-3', x: (g) => g.r / g.d, p: (g) => g.w / g.d, nominal: (g, F) => F / (g.d * g.t), formula: 'σ₀ = F / (d t)' },
@@ -153,7 +153,7 @@ export const GEOMETRIES = {
   },
   'shaft-groove': {
     label: 'Round shaft with a groove',
-    dims: [['D', 'Shaft diameter D'], ['d', 'Diameter at the groove d'], ['r', 'Groove radius r']],
+    dims: [['D', 'Shaft diameter D'], ['d', 'Groove diameter d'], ['r', 'Groove radius r']],
     check: ({ D, d }) => (d >= D ? 'The diameter at the groove must be less than the shaft diameter.' : null),
     loads: {
       F: { figure: 'A-15-13', x: (g) => g.r / g.d, p: (g) => g.D / g.d, nominal: (g, F) => F / round(g.d).A, formula: 'σ₀ = F / A,  A = π d² / 4' },

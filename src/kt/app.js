@@ -94,6 +94,7 @@ function renderInputs() {
     h('section', { class: 'panel', id: 'kt-dims' },
       h('div', { class: 'panel-head' }, h('h2', { text: 'Dimensions' }), h('span', { class: 'hint', text: geo.label })),
       h('div', { class: 'panel-body stack' },
+        geometryPicker(),
         h('div', { class: 'form-grid' }, geo.dims.map(([k, label]) => field(`kt-dim-${k}`, model.dims, k, label, u.dim.label))),
         h('p', { class: 'table-note', text: 'The stress concentration factors depend only on these dimensions. They are read from the charts of Shigley Table A-15.' }))),
     h('section', { class: 'panel', id: 'kt-loads' },
@@ -106,69 +107,114 @@ function renderInputs() {
 }
 
 // ---------------------------------------------------------------------------
-// Drawing: the part in profile, to scale.
+// Drawing: the part in profile, to scale, with its dimensions lettered.
 // ---------------------------------------------------------------------------
-function drawView() {
-  const host = $('kt-view'), W = Math.max(320, Math.floor(host.clientWidth || 640)), H = 230, cy = 104;
-  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': `${GEOMETRIES[model.geometry].label}, drawn to scale` });
-  clear(host).append(svg);
-  const geo = GEOMETRIES[model.geometry], u = U();
-  const g = Object.fromEntries(geo.dims.map(([k]) => [k, parseNum(model.dims[k])]));
-  const need = geo.dims.map(([k]) => k).filter((k) => k !== 't');
-  if (need.some((k) => !(g[k] > 0)) || geo.check({ ...g, t: g.t || 1 })) {
-    svg.append(s('text', { x: W / 2, y: cy, 'text-anchor': 'middle', text: 'Enter the dimensions to draw the part.' }));
-    return;
-  }
-  const big = g.w ?? g.D, x0 = W * 0.2, x1 = W * 0.8, mid = (x0 + x1) / 2;
-  const k = Math.min(120 / big, (x1 - x0) / (2.6 * big));     // px per unit, keeping the part longer than it is tall
-  const half = (v) => v * k / 2, R = Math.max(g.r ? g.r * k : 0, 0);
-  const isShaft = model.geometry.startsWith('shaft');
-  let d = '';
-  if (model.geometry === 'bar-hole') {
-    d = `M${x0} ${cy - half(g.w)}H${x1}V${cy + half(g.w)}H${x0}Z`;
-    svg.append(s('path', { class: 'part', d }), s('circle', { class: 'part-hole', cx: mid, cy, r: half(g.d) }));
-  } else if (model.geometry === 'bar-notch' || model.geometry === 'shaft-groove') {
+// A typical shape for each geometry, used for the picker thumbnails and for
+// the main drawing until the student has entered their own dimensions.
+const SAMPLE = {
+  'bar-hole': { w: 40, d: 12, t: 5 }, 'bar-notch': { w: 40, d: 30, r: 5, t: 5 }, 'bar-fillet': { D: 40, d: 26, r: 5, t: 5 },
+  'shaft-fillet': { D: 40, d: 26, r: 5 }, 'shaft-groove': { D: 40, d: 30, r: 5 },
+};
+const SHORT = { 'bar-hole': 'Bar, hole', 'bar-notch': 'Bar, notches', 'bar-fillet': 'Bar, shoulder', 'shaft-fillet': 'Shaft, shoulder', 'shaft-groove': 'Shaft, groove' };
+
+/** Draw the part between x0 and x1, centred on cy, no taller than maxH. Returns the key positions for labelling. */
+function partShape(svg, geometry, g, x0, x1, cy, maxH) {
+  const big = g.w ?? g.D, mid = (x0 + x1) / 2;
+  const k = Math.min(maxH / big, (x1 - x0) / (2.6 * big));        // px per unit, keeping the part longer than it is tall
+  const a = big * k / 2, b = g.d * k / 2, R = g.r ? g.r * k : 0;
+  const out = { k, mid, a, b, r: R, x0, x1, cy };
+  if (geometry === 'bar-hole') {
+    svg.append(s('path', { class: 'part', d: `M${x0} ${cy - a}H${x1}V${cy + a}H${x0}Z` }), s('circle', { class: 'part-hole', cx: mid, cy, r: b }));
+  } else if (geometry === 'bar-notch' || geometry === 'shaft-groove') {
     // a U-shaped notch of radius r on each side, cut down to the reduced size d
-    const a = half(big), b = half(g.d), depth = a - b, r = Math.min(R, depth > 0 ? Math.max(R, 0.5) : R);
-    const side = (sgn) => {
-      const yOut = cy + sgn * a, yIn = cy + sgn * b;
-      if (depth >= r) return `L${mid - r} ${yOut}L${mid - r} ${yIn + sgn * r}A${r} ${r} 0 0 ${sgn < 0 ? 0 : 1} ${mid + r} ${yIn + sgn * r}L${mid + r} ${yOut}`;
-      const hw = Math.sqrt(Math.max(r * r - (r - depth) ** 2, 0));     // shallow notch: a circular arc
-      return `L${mid - hw} ${yOut}A${r} ${r} 0 0 ${sgn < 0 ? 0 : 1} ${mid + hw} ${yOut}`;
-    };
-    d = `M${x0} ${cy - a}${side(-1)}L${x1} ${cy - a}L${x1} ${cy + a}`;
-    // the lower edge runs right to left
-    const lower = (() => {
-      const yOut = cy + a, yIn = cy + b;
-      if (depth >= r) return `L${mid + r} ${yOut}L${mid + r} ${yIn + r}A${r} ${r} 0 0 0 ${mid - r} ${yIn + r}L${mid - r} ${yOut}`;
-      const hw = Math.sqrt(Math.max(r * r - (r - depth) ** 2, 0));
-      return `L${mid + hw} ${yOut}A${r} ${r} 0 0 0 ${mid - hw} ${yOut}`;
-    })();
-    svg.append(s('path', { class: 'part', d: `${d}${lower}L${x0} ${cy + a}Z` }));
+    const depth = a - b, r = R;
+    const hw = depth >= r ? r : Math.sqrt(Math.max(r * r - (r - depth) ** 2, 0));    // half-width of the notch mouth
+    const top = depth >= r ? `L${mid - r} ${cy - a}L${mid - r} ${cy - b - r}A${r} ${r} 0 0 0 ${mid + r} ${cy - b - r}L${mid + r} ${cy - a}`
+      : `L${mid - hw} ${cy - a}A${r} ${r} 0 0 0 ${mid + hw} ${cy - a}`;
+    const bottom = depth >= r ? `L${mid + r} ${cy + a}L${mid + r} ${cy + b + r}A${r} ${r} 0 0 0 ${mid - r} ${cy + b + r}L${mid - r} ${cy + a}`
+      : `L${mid + hw} ${cy + a}A${r} ${r} 0 0 0 ${mid - hw} ${cy + a}`;
+    svg.append(s('path', { class: 'part', d: `M${x0} ${cy - a}${top}L${x1} ${cy - a}L${x1} ${cy + a}${bottom}L${x0} ${cy + a}Z` }));
+    out.hw = hw;
   } else {
     // shoulder: large section on the left, small on the right, with a fillet of radius r
-    const a = half(g.D), b = half(g.d), r = Math.min(R, a - b);
-    d = `M${x0} ${cy - a}H${mid}V${cy - b - r}A${r} ${r} 0 0 0 ${mid + r} ${cy - b}H${x1}V${cy + b}H${mid + r}A${r} ${r} 0 0 0 ${mid} ${cy + b + r}V${cy + a}H${x0}Z`;
-    svg.append(s('path', { class: 'part', d }));
+    const r = Math.min(R, a - b);
+    svg.append(s('path', { class: 'part', d: `M${x0} ${cy - a}H${mid}V${cy - b - r}A${r} ${r} 0 0 0 ${mid + r} ${cy - b}H${x1}V${cy + b}H${mid + r}A${r} ${r} 0 0 0 ${mid} ${cy + b + r}V${cy + a}H${x0}Z` }));
+    out.r = r;
   }
-  if (isShaft) svg.append(s('line', { class: 'axis', x1: x0 - 14, x2: x1 + 14, y1: cy, y2: cy, 'stroke-dasharray': '12 3 2 3' }));
+  if (geometry.startsWith('shaft')) svg.append(s('line', { class: 'axis', x1: x0 - (x1 - x0) * 0.04, x2: x1 + (x1 - x0) * 0.04, y1: cy, y2: cy, 'stroke-dasharray': '12 3 2 3' }));
+  return out;
+}
+
+/**
+ * A vertical dimension line with its label, e.g. "D = 38". side = 0 puts the
+ * label above the line (clear of a load arrow on the centre line); -1 or 1
+ * puts it beside the middle of the line.
+ */
+function dimV(svg, x, y1, y2, text, side) {
+  svg.append(s('line', { class: 'dim-line', x1: x, x2: x, y1, y2 }), s('line', { class: 'dim-line', x1: x - 4, x2: x + 4, y1, y2: y1 }), s('line', { class: 'dim-line', x1: x - 4, x2: x + 4, y1: y2, y2 }),
+    side === 0 ? s('text', { class: 't-strong', x, y: y1 - 7, 'text-anchor': 'middle', text })
+      : s('text', { class: 't-strong', x: x + side * 7, y: (y1 + y2) / 2 + 4, 'text-anchor': side < 0 ? 'end' : 'start', text }));
+}
+
+function drawView() {
+  const host = $('kt-view'), W = Math.max(320, Math.floor(host.clientWidth || 640)), H = 250, cy = 116;
+  const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, height: H, role: 'img', 'aria-label': `${GEOMETRIES[model.geometry].label}, with its dimensions labelled` });
+  clear(host).append(svg);
+  const geo = GEOMETRIES[model.geometry], u = U();
+  const own = Object.fromEntries(geo.dims.map(([key]) => [key, parseNum(model.dims[key])]));
+  const need = geo.dims.map(([key]) => key).filter((key) => key !== 't');
+  // Until the student's own dimensions are complete and possible, show a typical shape with the letters only.
+  const real = need.every((key) => own[key] > 0) && !geo.check({ ...own, t: own.t || 1 });
+  const g = real ? own : SAMPLE[model.geometry];
+  const tag = (key) => (real ? `${key} = ${fmt(g[key], 4)}` : key);
+  const x0 = W * 0.24, x1 = W * 0.76;
+  const p = partShape(svg, model.geometry, g, x0, x1, cy, 120);
+  const big = g.w !== undefined ? 'w' : 'D';
+
+  if (model.geometry === 'bar-hole') {
+    dimV(svg, x0 - 18, cy - p.a, cy + p.a, tag('w'), 0);
+    svg.append(s('line', { class: 'dim-line', x1: p.mid, x2: p.mid, y1: cy - p.b, y2: cy + p.b }), s('line', { class: 'dim-line', x1: p.mid + p.b * 0.7, y1: cy - p.b * 0.7, x2: p.mid + p.b + 26, y2: cy - p.b - 18 }),
+      s('text', { class: 't-strong', x: p.mid + p.b + 30, y: cy - p.b - 20, text: tag('d') }));
+  } else if (model.geometry === 'bar-notch' || model.geometry === 'shaft-groove') {
+    dimV(svg, x0 - 18, cy - p.a, cy + p.a, tag(big), 0);
+    dimV(svg, p.mid, cy - p.b, cy + p.b, tag('d'), 1);
+    svg.append(s('line', { class: 'dim-line', x1: p.mid + p.r * 0.7, y1: cy - p.b - p.r * 0.3, x2: p.mid + Math.max(p.r, 8) + 28, y2: cy - p.a - 16 }),
+      s('text', { class: 't-strong', x: p.mid + Math.max(p.r, 8) + 32, y: cy - p.a - 18, text: tag('r') }));
+  } else {
+    dimV(svg, x0 - 18, cy - p.a, cy + p.a, tag('D'), 0);
+    dimV(svg, x1 + 18, cy - p.b, cy + p.b, tag('d'), 0);
+    svg.append(s('line', { class: 'dim-line', x1: p.mid + p.r * 0.3, y1: cy - p.b - p.r * 0.3, x2: p.mid + 34, y2: cy - p.a - 12 }),
+      s('text', { class: 't-strong', x: p.mid + 38, y: cy - p.a - 14, text: tag('r') }));
+  }
+
   // loads that are applied
   const val = (key) => parseNum(model.loads[key]) || 0, lab = [];
   if (geo.loads.F && val('F')) lab.push(`F = ${fmt(val('F'), 4)} ${u.force.label}`);
   if (geo.loads.M && val('M')) lab.push(`M = ${fmt(val('M'), 4)} ${u.moment.label}`);
   if (geo.loads.T && val('T')) lab.push(`T = ${fmt(val('T'), 4)} ${u.moment.label}`);
-  if (val('F')) {
+  if (real && val('F')) {
     const dir = Math.sign(val('F'));
     for (const [xa, sgn] of [[x0, -1], [x1, 1]]) {
-      const tail = xa + sgn * (dir > 0 ? 8 : 44), tip = xa + sgn * (dir > 0 ? 44 : 8);
-      svg.append(s('line', { class: 'ld', x1: tail, x2: tip - sgn * dir * 6, y1: cy, y2: cy }),
-        s('polygon', { class: 'ld-fill', points: `${tip},${cy} ${tip - sgn * dir * 9},${cy - 4} ${tip - sgn * dir * 9},${cy + 4}` }));
+      const y = cy, tail = xa + sgn * (dir > 0 ? 34 : 74), tip = xa + sgn * (dir > 0 ? 74 : 34);    // just outside the dimension lines
+      svg.append(s('line', { class: 'ld', x1: tail, x2: tip - sgn * dir * 6, y1: y, y2: y }),
+        s('polygon', { class: 'ld-fill', points: `${tip},${y} ${tip - sgn * dir * 9},${y - 4} ${tip - sgn * dir * 9},${y + 4}` }));
     }
   }
-  svg.append(s('text', { class: 't-strong', x: W / 2, y: 20, 'text-anchor': 'middle', text: lab.length ? lab.join(',  ') : 'No loads: factors only' }));
+  svg.append(s('text', { class: 't-strong', x: W / 2, y: 20, 'text-anchor': 'middle', text: !real ? geo.label : lab.length ? lab.join(',  ') : 'No loads: factors only' }));
+  const thick = geo.dims.some(([key]) => key === 't') ? (real && own.t > 0 ? `   thickness t = ${fmt(own.t, 4)} ${u.dim.label} (into the page)` : '   thickness t is into the page') : '';
   svg.append(s('text', { class: 't-dim', x: W / 2, y: H - 30, 'text-anchor': 'middle',
-    text: `${geo.dims.map(([key]) => `${key} = ${fmt(g[key], 4)}`).join(',  ')} ${u.dim.label}` }));
-  svg.append(s('text', { class: 't-dim', x: W / 2, y: H - 12, 'text-anchor': 'middle', text: isShaft ? 'side view, drawn to scale (the dash-dot line is the shaft axis)' : 'face view, drawn to scale' }));
+    text: real ? `dimensions in ${u.dim.label}, drawn to scale.${thick}` : `A typical shape. Enter your dimensions to draw yours to scale.${thick}` }));
+  svg.append(s('text', { class: 't-dim', x: W / 2, y: H - 12, 'text-anchor': 'middle', text: model.geometry.startsWith('shaft') ? 'side view (the dash-dot line is the shaft axis)' : 'face view' }));
+}
+
+/** The five geometries as small sketches to choose from. */
+function geometryPicker() {
+  return h('div', { class: 'geo-pick', role: 'group', 'aria-label': 'Geometry' }, Object.keys(GEOMETRIES).map((id) => {
+    const svg = s('svg', { viewBox: '0 0 120 56', width: 120, height: 56, 'aria-hidden': 'true' });
+    partShape(svg, id, SAMPLE[id], 10, 110, 28, 40);
+    return h('button', { id: `kt-geo-${id}`, class: 'geo-card', type: 'button', 'aria-pressed': String(model.geometry === id), title: GEOMETRIES[id].label,
+      onClick: () => { model.geometry = id; touch(); renderSetup(); renderInputs(); } }, svg, h('span', { text: SHORT[id] }));
+  }));
 }
 
 // ---------------------------------------------------------------------------
