@@ -38,8 +38,8 @@ supports in the XY and XZ planes, plus axial force and torque.
 ## Bar
 
 A straight bar along x under axial load only. It can be stepped: each
-segment has its own area (a shape, or the area typed directly) and can have
-its own elastic modulus. Fixed at the left end, the right end, or both
+segment has its own area (a shape, or the area typed directly). One material
+for the whole bar. Fixed at the left end, the right end, or both
 (statically indeterminate). Point and distributed axial loads. Results:
 axial force, stress, strain and displacement diagrams, change in length and
 factor of safety per segment, reactions.

@@ -18,21 +18,21 @@ const circle = (d) => ({ shape: 'circle', dims: { d }, custom: {} });
 
 export function emptyBar(units = DEFAULT_UNITS) {
   return { version: 1, kind: 'bar', title: 'Untitled bar', units: { ...units }, material: defaultMaterial(units),
-    left: 'fixed', right: 'free', segments: [{ length: '', section: circle(''), E: '' }], pointLoads: [], distLoads: [] };
+    left: 'fixed', right: 'free', segments: [{ length: '', section: circle('') }], pointLoads: [], distLoads: [] };
 }
 
 export const BAR_EXAMPLES = [
   { ...emptyBar(SI), title: 'Stepped bar, two loads',
-    segments: [{ length: 0.5, section: circle(30), E: '' }, { length: 0.3, section: circle(20), E: '' }],
+    segments: [{ length: 0.5, section: circle(30) }, { length: 0.3, section: circle(20) }],
     pointLoads: [{ x: 0.5, Fx: 10 }, { x: 0.8, Fx: 20 }] },
-  { ...emptyBar(SI), title: 'Held at both ends, steel and aluminum', right: 'fixed',
-    segments: [{ length: 0.4, section: circle(25), E: '' }, { length: 0.6, section: circle(25), E: 71.7 }],
+  { ...emptyBar(SI), title: 'Held at both ends, stepped', right: 'fixed',
+    segments: [{ length: 0.4, section: circle(40) }, { length: 0.6, section: circle(25) }],
     pointLoads: [{ x: 0.4, Fx: 40 }] },
   { ...emptyBar(SI), title: 'Hanging rod with distributed load',
-    segments: [{ length: 2, section: circle(12), E: '' }],
+    segments: [{ length: 2, section: circle(12) }],
     pointLoads: [{ x: 2, Fx: 5 }], distLoads: [{ profile: 'uniform', x1: 0, x2: 2, w1: 1.5, w2: '' }] },
   { ...emptyBar(SI), title: 'Three steps in compression',
-    segments: [{ length: 0.2, section: circle(50), E: '' }, { length: 0.2, section: circle(40), E: '' }, { length: 0.2, section: circle(30), E: '' }],
+    segments: [{ length: 0.2, section: circle(50) }, { length: 0.2, section: circle(40) }, { length: 0.2, section: circle(30) }],
     pointLoads: [{ x: 0.6, Fx: -60 }, { x: 0.4, Fx: -30 }] },
 ];
 
@@ -46,7 +46,7 @@ function normalize(m) {
   out.units = { ...base.units, ...(m.units || {}) };
   for (const [k, list] of Object.entries(UNIT_CHOICES)) if (!list.includes(out.units[k])) out.units[k] = DEFAULT_UNITS[k];
   out.material = { ...base.material, ...(m.material || {}) };
-  out.segments = (Array.isArray(m.segments) && m.segments.length ? m.segments : base.segments).map((r) => ({ length: '', E: '', ...r, section: { shape: 'circle', dims: {}, custom: {}, ...(r.section || {}) } }));
+  out.segments = (Array.isArray(m.segments) && m.segments.length ? m.segments : base.segments).map((r) => ({ length: r.length ?? '', section: { shape: 'circle', dims: {}, custom: {}, ...(r.section || {}) } }));
   for (const k of ['pointLoads', 'distLoads']) out[k] = Array.isArray(m[k]) ? m[k].map((r) => ({ ...r })) : [];
   return out;
 }
@@ -71,9 +71,7 @@ export function barInput(m) {
   const segments = (m.segments || []).map((r, i) => {
     const sec = sectionSI(m.units, r.section);
     if (sec.error) errors.push(`Segment ${i + 1}: ${sec.error.replace(/^Section: /, '')}`);
-    const Eown = parseNum(r.E);
-    if (Eown !== null && !(Eown > 0)) errors.push(`Segment ${i + 1}: E must be positive.`);
-    return { L: (parseNum(r.length) ?? 0) * t.length.f, A: sec.props?.A ?? null, E: Eown !== null ? Eown * t.modulus.f : mat.E };
+    return { L: (parseNum(r.length) ?? 0) * t.length.f, A: sec.props?.A ?? null, E: mat.E };
   });
   const pointLoads = [];
   (m.pointLoads || []).forEach((r, i) => {
@@ -104,7 +102,7 @@ function renderSetup() {
     h('div', { class: 'field' }, h('label', { for: 'bar-title', text: 'Name' }), title),
     end('left', 'Left end'), end('right', 'Right end'),
     pick('bar-pick-material', 'Material', materialSummary(model.units, model.material), () => openMaterialDialog({ units: model.units, material: model.material, show: ['E', 'nu', 'Sy', 'Sut'],
-      note: 'E gives strain and displacement; Sy gives the factor of safety. A segment can override E in the table.',
+      note: 'E gives strain and displacement; Sy gives the factor of safety. The whole bar is one material.',
       onApply: (mat) => { model.material = mat; touch(); renderSetup(); } })),
     pick('bar-pick-units', 'Units', `${model.units.force} · ${model.units.length} · ${model.units.stress}`, () => openUnitsDialog({ units: model.units, onApply: applyUnits })),
     h('div', { class: 'grow' }),
@@ -117,17 +115,16 @@ function renderTables() {
   clear($('bar-tables')).append(
     tablePanel({
       id: 'bar-segments', title: 'Segments', hint: 'Left to right along x', addLabel: 'Add segment', minRows: 1, changed: ch,
-      heads: [th('Length', u.length.label), th('Cross-section'), th('Area'), th('E', u.modulus.label)],
+      heads: [th('Length', u.length.label), th('Cross-section'), th('Area')],
       rows: model.segments,
       rowCells: (row, i) => [numCell('bar-seg', row, i, 'length', 'Segment length', ch),
         h('td', {}, h('button', { id: `bar-seg-${i}-section`, class: 'btn small', type: 'button', text: sectionSummary(model.units, row.section),
           onClick: () => openSectionDialog({ units: model.units, section: row.section, need: 'area', title: `Cross-section of segment ${i + 1}`,
             onApply: (sec) => { row.section = sec; touch(true); } }) })),
-        h('td', { class: 'detail num', text: areaText(row) }),
-        numCell('bar-seg', row, i, 'E', 'Elastic modulus', ch, { placeholder: 'material' })],
-      onAdd: () => { const last = model.segments[model.segments.length - 1]; model.segments.push({ length: '', section: structuredClone(last.section), E: last.E }); },
+        h('td', { class: 'detail num', text: areaText(row) })],
+      onAdd: () => { const last = model.segments[model.segments.length - 1]; model.segments.push({ length: '', section: structuredClone(last.section) }); },
       empty: '',
-      note: 'Leave E blank to use the material chosen above. Type a value to give a segment a different material.',
+      note: 'Each segment has its own cross-section. Click a section to change its shape, or choose Custom to type the area.',
     }),
     tablePanel({
       id: 'bar-pointLoads', title: 'Point loads', hint: 'Axial force at x', addLabel: 'Add point load', changed: ch,
@@ -289,7 +286,7 @@ function applyUnits(units, mode) {
   if (mode === 'convert') {
     const from = model.units, cv = (v, kind) => convert(parseNum(v) ?? '', kind, from, units);
     model = { ...model, units: { ...units }, material: convertMaterial(model.material, from, units),
-      segments: model.segments.map((r) => ({ ...r, length: cv(r.length, 'length'), E: cv(r.E, 'modulus'), section: convertSection(r.section, from, units) })),
+      segments: model.segments.map((r) => ({ ...r, length: cv(r.length, 'length'), section: convertSection(r.section, from, units) })),
       pointLoads: model.pointLoads.map((r) => ({ ...r, x: cv(r.x, 'length'), Fx: cv(r.Fx, 'force') })),
       distLoads: model.distLoads.map((r) => ({ ...r, x1: cv(r.x1, 'length'), x2: cv(r.x2, 'length'), w1: cv(r.w1, 'distForce'), w2: cv(r.w2, 'distForce') })) };
     save(); renderSetup(); renderTables(); drawView(); renderResults();
@@ -307,7 +304,7 @@ function helpContent() {
   const li = (t) => h('li', { text: t });
   return h('div', { class: 'help' },
     h('h3', { text: 'What it solves' }),
-    h('ul', {}, li('A straight bar along x that carries axial load only. It can be stepped: each segment has its own area and, if you wish, its own E.'),
+    h('ul', {}, li('A straight bar along x, of one material, that carries axial load only. It can be stepped: each segment has its own cross-section.'),
       li('The bar is held at its left end, its right end, or both. With both ends fixed the reactions depend on the stiffness EA/L of each segment.')),
     h('h3', { text: 'Signs' }),
     h('ul', {}, li('Forces are positive along +x, to the right. x is measured from the left end.'),
