@@ -27,8 +27,8 @@ const Q = {
   v: { title: 'Deflection', sym: 'v', kind: 'deflection' },
   Vz: { title: 'Shear force', sym: 'Vz', kind: 'force' },
   My: { title: 'Bending moment', sym: 'My', kind: 'moment' },
-  slopeXZ: { title: 'Slope', sym: 'dw/dx', kind: 'angle' },
-  w: { title: 'Deflection', sym: 'w', kind: 'deflection' },
+  slopeXZ: { title: 'Slope', sym: 'dw/dx', kind: 'angle', zDown: true },
+  w: { title: 'Deflection', sym: 'w', kind: 'deflection', zDown: true },
   Mtotal: { title: 'Total bending moment', sym: 'M', kind: 'moment' },
   T: { title: 'Torque', sym: 'T', kind: 'moment' },
   twist: { title: 'Angle of twist', sym: 'φ', kind: 'angle' },
@@ -202,7 +202,7 @@ function renderTables() {
       rowCells: (row, i) => ['x', 'Fx', 'Fy', 'Fz'].map((k) => numCell('pointLoads', row, i, k, k === 'x' ? 'Position x' : `Force ${k}`)),
       onAdd: () => model.pointLoads.push({ x: '', Fx: '', Fy: '', Fz: '' }),
       empty: 'No point loads.',
-      note: '+y is up, so a downward load is a negative Fy. Fx acts along the beam.',
+      note: '+y is up, so a downward load is a negative Fy. +z points down the page in the XZ view. Fx acts along the beam.',
     }),
     tablePanel({
       id: 'moments', title: 'Moments and torque', hint: 'Right-hand rule about each axis', addLabel: 'Add moment',
@@ -211,7 +211,7 @@ function renderTables() {
       rowCells: (row, i) => [['x', 'Position x'], ['Mx', 'Torque T'], ['My', 'Moment My'], ['Mz', 'Moment Mz']].map(([k, l]) => numCell('moments', row, i, k, l)),
       onAdd: () => model.moments.push({ x: '', Mx: '', My: '', Mz: '' }),
       empty: 'No moments.',
-      note: 'T twists the beam. Mz bends it in the XY plane (counter-clockwise positive in that view); My bends it in the XZ plane.',
+      note: 'T twists the beam. Mz bends it in the XY plane and My in the XZ plane; both are counter-clockwise positive in their view.',
     }),
     tablePanel({
       id: 'distLoads', title: 'Distributed loads', hint: 'Load per unit length from x start to x end', addLabel: 'Add distributed load',
@@ -333,7 +333,9 @@ function renderResults() {
   } else {
     renderPlotGroup(plots, {
       x: d.x, xUnit: u.length.label, marks: r.reactions.map((q) => q.x / u.length.f),
-      plots: keys.map((k) => ({ title: `${Q[k].title} ${Q[k].sym}`, symbol: Q[k].sym, unit: u[Q[k].kind].label, y: d[k] })),
+      // w and dw/dx are measured along +z, which points down the page in the XZ view.
+      plots: keys.map((k) => ({ title: `${Q[k].title} ${Q[k].sym}`, symbol: Q[k].sym, y: d[k], invert: !!Q[k].zDown,
+        unit: u[Q[k].kind].label + (Q[k].zDown ? ', +z down' : '') })),
     });
     const missing = TABS[tab].keys.filter((k) => !r[k] && (tab !== 'combined'));
     if (missing.length && (tab === 'xy' ? r.active.xy : r.active.xz)) {
@@ -618,18 +620,19 @@ function openHelp() {
   clear(helpDlg.body).append(h('div', { class: 'help' },
     h('h3', { text: 'Axes' }),
     h('ul', {}, li('x runs along the beam from the left end. y is up. z comes toward you in the XY view.'),
-      li('The XZ view shows x to the right and z up.')),
+      li('The XZ view looks down on the beam from above: x to the right and +z down the page.')),
     h('h3', { text: 'What you enter' }),
     h('ul', {}, li('Forces are positive along +x, +y and +z. A downward load is a negative Fy.'),
-      li('Moments are positive by the right-hand rule about their axis. T is the torque about x. A positive Mz is counter-clockwise in the XY view. A positive My is clockwise in the XZ view.'),
+      li('Moments are positive by the right-hand rule about their axis. T is the torque about x. A positive Mz is counter-clockwise in the XY view, and a positive My is counter-clockwise in the XZ view.'),
       li('Distributed loads follow the same signs, per unit length.')),
     h('h3', { text: 'What you get back' }),
-    h('ul', {}, li('Shear Vy, Vz: the sum of the transverse forces to the left of the cut.'),
-      li('Bending moment Mz (XY plane) and My (XZ plane): positive when the beam sags in that view, that is, bends concave toward +y or +z.'),
+    h('ul', {}, li('Both planes are read the same way on the page. Shear Vy, Vz: positive when the forces to the left of the cut add up to a resultant that points up the page (along +y in XY, along \u2212z in XZ).'),
+      li('Bending moment Mz (XY plane) and My (XZ plane): positive when the beam sags on the page. Both equal the right-hand-rule component of the internal moment on a cut face that looks toward +x.'),
+      li('So a load that points down the page gives the familiar picture in either view: positive shear at the left support and a positive moment.'),
       li('Total bending moment: the square root of Mz² + My². Use it for round sections.'),
       li('Torque T: positive when the torque vector on a cut face that looks toward +x points along +x.'),
       li('Axial force N: positive in tension.'),
-      li('Slopes are dv/dx and dw/dx. Deflections v and w are positive along +y and +z.'),
+      li('Slopes are dv/dx and dw/dx. Deflections v and w are positive along +y and +z. In the XZ tab, w and dw/dx are drawn with positive values downward, to match the view.'),
       li('Reactions are the forces and moments the supports apply to the beam, in the same axes.')),
     h('h3', { text: 'Theory and limits' }),
     h('ul', {}, li('Euler-Bernoulli beam theory: small deflections, linear elastic material, no shear deformation.'),

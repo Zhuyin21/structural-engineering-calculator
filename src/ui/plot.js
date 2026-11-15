@@ -13,7 +13,9 @@ function niceStep(span, target) {
 
 /**
  * Draw a group of plots that share an x axis and a hover cursor.
- * plots = [{ title, symbol, unit, y: number[] }]   x in display units.
+ * plots = [{ title, symbol, unit, y: number[], invert }]   x in display units.
+ * `invert: true` draws positive values downward, for a quantity measured
+ * along an axis that points down the page (z in the top view).
  */
 export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
   clear(container);
@@ -32,8 +34,10 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
     const flat = hi - lo < 1e-300;
     if (flat) { hi = 1; lo = -1; }
     const pad = (hi - lo) * 0.2;
-    const top = hi + (hi > 0 ? pad : pad * 0.4), bot = lo - (lo < 0 ? pad : pad * 0.4);
-    const py = (v) => M.t + (top - v) / (top - bot) * (H - M.t - M.b);
+    const g = p.invert ? -1 : 1;                 // geometry sign: -1 puts positive values below zero
+    const gHi = Math.max(g * hi, g * lo), gLo = Math.min(g * hi, g * lo);
+    const top = gHi + (gHi > 0 ? pad : pad * 0.4), bot = gLo - (gLo < 0 ? pad : pad * 0.4);
+    const py = (v) => M.t + (top - g * v) / (top - bot) * (H - M.t - M.b);
 
     const read = h('div', { class: 'plot-read' });
     const summary = flat ? 'zero everywhere'
@@ -69,8 +73,8 @@ export function renderPlotGroup(container, { x, xUnit, plots, marks = [] }) {
         const dx = anchor === 'end' ? -7 : anchor === 'start' ? 7 : 0;
         svg.append(s('text', { class: 't-strong', x: cx + dx, y: above ? cy - 8 : cy + 15, 'text-anchor': anchor, text: fmt(p.y[i], 4) }));
       };
-      labelPeak(iMax, true);
-      if (iMin !== iMax) labelPeak(iMin, false);
+      labelPeak(iMax, !p.invert);
+      if (iMin !== iMax) labelPeak(iMin, !!p.invert);
     }
 
     const cLine = s('line', { class: 'cursor-line', y1: M.t - 4, y2: H - M.b, visibility: 'hidden' });

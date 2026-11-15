@@ -18,7 +18,8 @@ signs are both asserted, to a relative tolerance of 1e-9 unless noted.
 | Sinusoidal formula load | w₀L/π, w₀L²/π², w₀L⁴/π⁴EI |
 | Overhanging beam | reactions, support moment, tip deflection Pa²(L+a)/3EI |
 | Translational and rotational springs | load sharing with the beam stiffness |
-| XZ plane | mirrors XY using Iy; right-hand-rule sign of My |
+| XZ plane (top view, z down) | reads like XY using Iy: positive shear and moment for a load pointing down the page; deflection along +z |
+| Moment signs | Mz and My equal the right-hand-rule components of the internal moment, from a cantilever cross-product check |
 | Both planes | resultant bending moment |
 | Axial | tension positive; fixed-free, fixed-fixed, distributed load |
 | Torsion | fixed-free, fixed-fixed, distributed torque, balanced torques on an unrestrained shaft |

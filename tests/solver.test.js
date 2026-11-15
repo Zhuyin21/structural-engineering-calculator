@@ -174,20 +174,41 @@ test('rotational spring at a pinned end', () => {
   close(r.reactions[0].Mz, -M0 * kr / (kr + kb));
 });
 
-test('XZ plane mirrors XY and uses Iy', () => {
+test('XZ plane (seen from above, z down) reads like XY and uses Iy', () => {
+  // A +z load points down the page, so the diagrams look like the classic downward-load case.
   const L = 6, a = 2, b = 4, P = 12e3;
-  const r = solve({ L, supports: [{ x: 0, ...PIN }, { x: L, ...ROLLER }], pointLoads: [{ x: a, Fz: -P }] });
-  close(r.reactions[0].Fz, P * b / L);
-  close(r.extremes.My.max, P * a * b / L);                // sagging in the XZ view is positive
-  close(r.at(a).w, -P * a * a * b * b / (3 * E * Iy * L));
+  const r = solve({ L, supports: [{ x: 0, ...PIN }, { x: L, ...ROLLER }], pointLoads: [{ x: a, Fz: P }] });
+  close(r.reactions[0].Fz, -P * b / L);
+  close(r.reactions[1].Fz, -P * a / L);
+  close(r.at(a, 'left').Vz, P * b / L);                   // left resultant points up the page (-z)
+  close(r.at(a, 'right').Vz, -P * a / L);
+  close(r.extremes.My.max, P * a * b / L);                // sagging on the page is positive
+  close(r.extremes.My.xMax, a);
+  close(r.at(a).w, P * a * a * b * b / (3 * E * Iy * L)); // deflects along +z
   assert.equal(r.extremes.Mz.abs, 0);
   close(r.at(a).Mtotal, P * a * b / L);
+});
+
+test('My is the right-hand-rule component of the internal moment', () => {
+  // Cantilever with a tip force along +z. Moment of the load about a cut at x:
+  // ((L - x) i) x (P k) = -(L - x) P j, so My = -P (L - x).
+  const L = 2, P = 1e3;
+  const r = solve({ L, supports: [{ x: 0, ...FIXED }], pointLoads: [{ x: L, Fz: P }] });
+  close(r.at(0).My, -P * L);
+  close(r.at(0.5).My, -P * 1.5);
+  close(r.at(1).Vz, P);                                   // reaction -P k on the left points up the page
+  close(r.reactions[0].My, P * L);                        // the wall supplies +P L about y
+  close(r.at(L).w, P * L ** 3 / (3 * E * Iy));
+  // Same statement in the XY plane: Mz = +P (L - x) for a tip force along +y.
+  const q = solve({ L, supports: [{ x: 0, ...FIXED }], pointLoads: [{ x: L, Fy: P }] });
+  close(q.at(0.5).Mz, P * 1.5);
 });
 
 test('moment about +y follows the right-hand rule', () => {
   const L = 2, M0 = 3e3;
   const r = solve({ L, supports: [{ x: 0, ...FIXED }], moments: [{ x: L, My: M0 }] });
   close(r.at(L).w, -M0 * L * L / (2 * E * Iy));           // +My turns +x toward -z
+  close(r.at(1).My, M0);                                  // internal moment equals the applied couple
   close(r.reactions[0].My, -M0);
   close(r.at(L).slopeXZ, -M0 * L / (E * Iy));
 });
@@ -196,7 +217,7 @@ test('both planes at once: resultant moment', () => {
   const L = 1;
   const r = solve({ L, supports: [{ x: 0, ...PIN }, { x: L, ...ROLLER }], pointLoads: [{ x: 0.5, Fy: -3e3, Fz: 4e3 }] });
   close(r.at(0.5).Mz, 750);
-  close(r.at(0.5).My, -1000);
+  close(r.at(0.5).My, 1000);
   close(r.at(0.5).Mtotal, 1250);
   close(r.extremes.Mtotal.max, 1250);
 });

@@ -22,15 +22,19 @@
 //
 // SIGN CONVENTIONS (see docs/sign-conventions.md)
 //   Axes       right-handed: x along the beam, y up, z toward the viewer.
+//   Views      XY from the front (y up the page); XZ from above (z DOWN the page).
 //   Loads      positive along +x, +y, +z. Moments positive by the right-hand
-//              rule about +x (torque), +y, +z.
+//              rule about +x (torque), +y, +z; in both views that is
+//              counter-clockwise on the page.
 //   N          positive in tension.
 //   T          positive when the torque vector on a +x cut face points along +x.
-//   Vy, Vz     sum of the transverse forces to the left of the cut.
-//   Mz, My     positive when the beam bends concave toward +y (XY plane) or
-//              +z (XZ plane), i.e. "sagging" in that plane view. Mz is the
-//              bending moment in the XY plane; My in the XZ plane.
-//   Slopes     dv/dx and dw/dx.
+//   Vy, Vz     positive when the resultant of the forces to the left of the
+//              cut points up the page: Vy = +sum(Fy), Vz = -sum(Fz).
+//   Mz, My     positive when the beam sags on the page (XY: concave toward +y,
+//              XZ: concave toward -z). Both equal the right-hand-rule component
+//              of the internal moment on a +x cut face. Mz is the bending
+//              moment in the XY plane; My in the XZ plane.
+//   Slopes     dv/dx and dw/dx; deflections v, w along +y, +z.
 //
 // All quantities are SI (N, m, Pa, rad).
 
@@ -366,7 +370,9 @@ export function solveBeam(input, opts = {}) {
   // --- the two bending planes ----------------------------------------------
   const planes = [
     { id: 'xy', name: 'XY', axis: 'y', t: 'uy', r: 'rz', P: pt.Fy, C: pt.Mz, dir: 'y' },
-    // In the XZ view (x right, z up) counter-clockwise is rotation about -y.
+    // This plane is solved with z as the transverse axis, in which a couple
+    // about +y is clockwise; the shear and moment are then turned into the
+    // top-view (z down) convention where they are read out, in evalSeg.
     { id: 'xz', name: 'XZ', axis: 'z', t: 'uz', r: 'ry', P: pt.Fz, C: pt.My.map((v) => -v), dir: 'z' },
   ];
   for (const pl of planes) {
@@ -406,7 +412,7 @@ export function solveBeam(input, opts = {}) {
     if (results.axial) { const e = evalBar(results.axial.segs[j], s); out.N = e.force; if (haveDisp('axial')) out.u = e.disp; }
     if (results.torsion) { const e = evalBar(results.torsion.segs[j], s); out.T = e.force; if (haveDisp('torsion')) out.twist = e.disp; }
     if (results.xy) { const e = evalBending(results.xy.segs[j], s); out.Vy = e.V; out.Mz = e.M; if (haveDisp('xy')) { out.v = e.defl; out.slopeXY = e.slope; } }
-    if (results.xz) { const e = evalBending(results.xz.segs[j], s); out.Vz = e.V; out.My = e.M; if (haveDisp('xz')) { out.w = e.defl; out.slopeXZ = e.slope; } }
+    if (results.xz) { const e = evalBending(results.xz.segs[j], s); out.Vz = -e.V || 0; out.My = -e.M || 0; if (haveDisp('xz')) { out.w = e.defl; out.slopeXZ = e.slope; } }
     for (const id of ['axial', 'torsion', 'xy', 'xz']) {
       if (!active[id] && stiff[id] !== null) {
         if (id === 'axial') out.u = 0; else if (id === 'torsion') out.twist = 0;

@@ -1,5 +1,5 @@
 // Plane views: a drawing of the beam, its supports and loads as seen in the
-// XY plane (y up) or the XZ plane (z up). Redrawn from the tables on every
+// XY plane (from the front, y up) or the XZ plane (from above, z down). Redrawn from the tables on every
 // edit, so the student sees what they typed before solving. After a solve
 // the reactions are added in a second colour.
 import { s, clear } from '../ui/dom.js';
@@ -10,9 +10,11 @@ import { parseNum, SUPPORT_TYPES } from './model.js';
 const H = 250, Y0 = 104, MX = 46;
 
 const PLANES = {
-  xy: { axis: 'y', t: 'uy', r: 'rz', F: 'Fy', M: 'Mz', k: 'ky', dir: 'y', ccw: 1 },
-  // In the XZ view counter-clockwise is rotation about -y, so +My appears clockwise.
-  xz: { axis: 'z', t: 'uz', r: 'ry', F: 'Fz', M: 'My', k: 'kz', dir: 'z', ccw: -1 },
+  // `up` is +1 when the transverse axis points up the page, -1 when it points down.
+  xy: { axis: 'y', t: 'uy', r: 'rz', F: 'Fy', M: 'Mz', k: 'ky', dir: 'y', up: 1 },
+  // The XZ plane is seen from above (looking along -y), so +z points down the
+  // page. In both views a positive moment (right-hand rule) is counter-clockwise.
+  xz: { axis: 'z', t: 'uz', r: 'ry', F: 'Fz', M: 'My', k: 'kz', dir: 'z', up: -1 },
 };
 
 function arrow(g, x1, y1, x2, y2, cls, heads = 1) {
@@ -59,9 +61,13 @@ export function drawPlane(host, model, plane, solved) {
   const L = parseNum(model.length);
 
   // axis triad
-  arrow(svg, 16, 44, 16, 20, 'axis');
-  arrow(svg, 16, 44, 40, 44, 'axis');
-  svg.append(s('text', { class: 't-dim', x: 22, y: 24, text: cfg.axis }), s('text', { class: 't-dim', x: 44, y: 48, text: 'x' }));
+  if (cfg.up > 0) {
+    arrow(svg, 16, 44, 16, 20, 'axis'); arrow(svg, 16, 44, 40, 44, 'axis');
+    svg.append(s('text', { class: 't-dim', x: 22, y: 24, text: cfg.axis }), s('text', { class: 't-dim', x: 44, y: 48, text: 'x' }));
+  } else {
+    arrow(svg, 16, 20, 16, 44, 'axis'); arrow(svg, 16, 20, 40, 20, 'axis');
+    svg.append(s('text', { class: 't-dim', x: 22, y: 46, text: cfg.axis }), s('text', { class: 't-dim', x: 44, y: 24, text: 'x' }));
+  }
 
   if (!(L > 0)) {
     svg.append(s('text', { x: W / 2, y: Y0, 'text-anchor': 'middle', text: 'Enter a beam length to draw the beam.' }));
@@ -86,7 +92,8 @@ export function drawPlane(host, model, plane, solved) {
       f = (x) => w1 + (w2 - w1) * (x - x1) / (x2 - x1);
     }
     const n = 32, pts = [];
-    for (let k = 0; k <= n; k++) { const x = x1 + (x2 - x1) * k / n; const v = f(x); pts.push([x, Number.isFinite(v) ? v : 0]); }
+    const flip = q.dir === cfg.dir ? cfg.up : 1;       // values as they point on the page (positive = up)
+    for (let k = 0; k <= n; k++) { const x = x1 + (x2 - x1) * k / n; const v = f(x) * flip; pts.push([x, Number.isFinite(v) ? v : 0]); }
     dists.push({ q, x1, x2, pts });
     ticks.push(x1, x2);
   }
@@ -102,7 +109,7 @@ export function drawPlane(host, model, plane, solved) {
       continue;
     }
     if (!(wMax > 0)) continue;
-    // Negative load (along -axis) is drawn above the beam pushing down; positive below pushing up.
+    // A load pointing down the page is drawn above the beam pushing down; one pointing up, below it.
     const yOf = (v) => (v < 0 ? Y0 - 5 - 32 * Math.abs(v) / wMax : v > 0 ? Y0 + 5 + 32 * v / wMax : null);
     for (const side of [-1, 1]) {
       const base = Y0 + side * 5;
@@ -181,7 +188,7 @@ export function drawPlane(host, model, plane, solved) {
     const x = parseNum(p.x);
     if (!on(x)) continue;
     ticks.push(x);
-    const X = px(x), v = parseNum(p[cfg.F]) || 0;
+    const X = px(x), v = (parseNum(p[cfg.F]) || 0) * cfg.up;
     if (v !== 0) {
       const len = 40 + stagger(X);
       if (v < 0) { arrow(svg, X, Y0 - 5 - len, X, Y0 - 5, 'ld'); svg.append(s('text', { class: 't-strong', x: X, y: Y0 - 10 - len, 'text-anchor': 'middle', text: `${fmt(-v, 4)} ${u.force.label}` })); }
@@ -202,7 +209,7 @@ export function drawPlane(host, model, plane, solved) {
     ticks.push(x);
     const X = px(x), v = parseNum(m[cfg.M]) || 0;
     if (v !== 0) {
-      curl(svg, X, Y0, 17, v * cfg.ccw > 0, 'ld');
+      curl(svg, X, Y0, 17, v > 0, 'ld');
       svg.append(s('text', { class: 't-strong', x: X + 22, y: Y0 - 20, text: `${fmt(Math.abs(v), 4)} ${u.moment.label}` }));
     }
     const tq = parseNum(m.Mx) || 0;
@@ -218,7 +225,7 @@ export function drawPlane(host, model, plane, solved) {
   if (solved) {
     for (const r of solved.result.reactions) {
       const X = px(r.x / u.length.f);
-      const F = r[cfg.F] / u.force.f, Mv = r[cfg.M] / u.moment.f;
+      const F = r[cfg.F] / u.force.f * cfg.up, Mv = r[cfg.M] / u.moment.f;
       const tiny = (v, ref) => Math.abs(v) < 1e-9 * ref;
       const fRef = Math.max(1e-12, ...solved.result.reactions.map((q) => Math.abs(q[cfg.F]) / u.force.f));
       let line = Y0 + 82;
@@ -229,7 +236,7 @@ export function drawPlane(host, model, plane, solved) {
       }
       if (r.held[cfg.r] && Math.abs(Mv) > 1e-12) {
         const side = X < W / 2 ? 1 : -1;
-        curl(svg, X, Y0, 24, Mv * cfg.ccw > 0, 'rx');
+        curl(svg, X, Y0, 24, Mv > 0, 'rx');
         svg.append(s('text', { class: 't-strong', x: X + side * 30, y: Y0 - 30, 'text-anchor': side > 0 ? 'start' : 'end', text: `${fmt(Math.abs(Mv), 4)} ${u.moment.label}` }));
       }
       if (plane === 'xy') {
