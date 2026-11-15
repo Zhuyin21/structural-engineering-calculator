@@ -290,7 +290,6 @@ footer.foot a { color: var(--accent); }
 /* ---- several analyses on one page ---- */
 .analysis { display: flex; flex-direction: column; gap: 14px; }
 .menu-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); padding: 8px 10px 2px; }
-.menu-list { max-height: min(70vh, 560px); overflow-y: auto; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .form-grid.ends-row { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
 .form-grid select, .stack select { width: 100%; }
@@ -299,3 +298,20 @@ footer.foot a { color: var(--accent); }
 .unit-tag { margin-top: 3px; white-space: normal; text-align: left; color: var(--warn-ink); background: var(--warn-soft); border-color: transparent; font-family: var(--font-num); font-size: 11px; }
 .grid td > .unit { display: block; margin-top: 2px; font-size: 11px; }
 .grid td .btn.small { white-space: normal; text-align: left; }
+
+/* ---- cascading menus ---- */
+.menu-sub { position: relative; display: flex; flex-direction: column; }
+.menu-item.has-sub[aria-expanded="true"] { background: var(--accent-soft); }
+.menu-list.submenu { top: -5px; left: calc(100% - 2px); min-width: 250px; }
+@media (max-width: 700px) {
+  /* no room to fly out sideways: open the submenu in place, indented */
+  .menu-list.submenu { position: static; box-shadow: none; border: 0; border-left: 2px solid var(--line-strong); border-radius: 0; margin: 0 0 4px 12px; padding: 0 0 0 4px; min-width: 0; max-width: none; }
+}
+
+/* ---- stress concentration ---- */
+svg .part { fill: var(--accent-soft); stroke: var(--ink); stroke-width: 1.5; stroke-linejoin: round; }
+svg .part-hole { fill: var(--surface); stroke: var(--ink); stroke-width: 1.5; }
+svg .book-curve { fill: none; stroke: var(--ink-3); stroke-width: 1; }
+.formulas { margin: 8px 0 0; padding-left: 18px; font-size: 12px; color: var(--ink-2); }
+.formulas li { margin-bottom: 2px; }
+.brand-tool { white-space: nowrap; }

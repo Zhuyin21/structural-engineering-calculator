@@ -39,13 +39,50 @@ export function makeDialog(title, { wide = false } = {}) {
 }
 
 /**
- * Menu bar. `menus` = [{ label, items: [{ label, tag, disabled, current, onSelect } | { heading } | 'sep'] }].
- * Items may also be a function returning the list, evaluated each time the menu opens.
+ * Menu bar. `menus` = [{ label, items }], where items is a list (or a function
+ * returning one, evaluated each time the menu opens) of
+ *   { label, tag, disabled, current, onSelect }      an action
+ *   { label, items: [...] }                          a submenu that flies out to the side
+ *   { heading }   or   'sep'
+ * Submenus open on hover and on click or tap, and can be nested.
  */
 export function buildMenus(container, menus) {
-  const closeAll = () => container.querySelectorAll('.menu-list').forEach((l) => {
-    l.hidden = true; l.previousElementSibling.setAttribute('aria-expanded', 'false');
-  });
+  const closeAll = () => {
+    container.querySelectorAll('.menu-list').forEach((l) => { l.hidden = true; });
+    container.querySelectorAll('[aria-expanded]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+  };
+  const fill = (list, items) => {
+    for (const it of items) {
+      if (it === 'sep') { list.append(h('div', { class: 'menu-sep' })); continue; }
+      if (it.heading) { list.append(h('div', { class: 'menu-heading', text: it.heading })); continue; }
+      if (it.items) {
+        const sub = h('div', { class: 'menu-list submenu', role: 'menu', hidden: true });
+        fill(sub, it.items);
+        const btn = h('button', { class: 'menu-item has-sub', type: 'button', role: 'menuitem', 'aria-haspopup': 'true', 'aria-expanded': 'false' },
+          h('span', { text: it.label }), h('span', { class: 'tag', 'aria-hidden': 'true', text: '\u25B8' }));
+        const wrap = h('div', { class: 'menu-sub' }, btn, sub);
+        const open = (on) => {
+          // only one submenu open at each level
+          for (const sib of list.querySelectorAll(':scope > .menu-sub')) {
+            if (sib === wrap) continue;
+            sib.querySelectorAll('.menu-list').forEach((l) => { l.hidden = true; });
+            sib.querySelectorAll('[aria-expanded]').forEach((b) => b.setAttribute('aria-expanded', 'false'));
+          }
+          sub.hidden = !on; btn.setAttribute('aria-expanded', String(on));
+        };
+        // With a mouse, hovering has already opened it, so a click keeps it open; touch and keyboard toggle.
+        btn.addEventListener('click', (e) => { e.stopPropagation(); open(e.pointerType === 'mouse' ? true : sub.hidden); });
+        wrap.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') open(true); });
+        wrap.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') open(false); });
+        list.append(wrap);
+        continue;
+      }
+      list.append(h('button', { class: 'menu-item', type: 'button', role: 'menuitem', disabled: !!it.disabled,
+        'aria-current': it.current ? 'true' : null,
+        onClick: () => { closeAll(); it.onSelect && it.onSelect(); } },
+        h('span', { text: it.label }), it.tag ? h('span', { class: 'tag', text: it.tag }) : null));
+    }
+  };
   for (const m of menus) {
     const list = h('div', { class: 'menu-list', role: 'menu', hidden: true });
     const btn = h('button', { class: 'menu-btn', type: 'button', 'aria-haspopup': 'true', 'aria-expanded': 'false', text: m.label,
@@ -55,15 +92,7 @@ export function buildMenus(container, menus) {
         closeAll();
         if (wasOpen) return;
         clear(list);
-        const items = typeof m.items === 'function' ? m.items() : m.items;
-        for (const it of items) {
-          if (it === 'sep') { list.append(h('div', { class: 'menu-sep' })); continue; }
-          if (it.heading) { list.append(h('div', { class: 'menu-heading', text: it.heading })); continue; }
-          list.append(h('button', { class: 'menu-item', type: 'button', role: 'menuitem', disabled: !!it.disabled,
-            'aria-current': it.current ? 'true' : null,
-            onClick: () => { closeAll(); it.onSelect && it.onSelect(); } },
-            h('span', { text: it.label }), it.tag ? h('span', { class: 'tag', text: it.tag }) : null));
-        }
+        fill(list, typeof m.items === 'function' ? m.items() : m.items);
         list.hidden = false;
         btn.setAttribute('aria-expanded', 'true');
       } });

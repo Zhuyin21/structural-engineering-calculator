@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Structural Engineering Calculator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Open-source beam, bar and column calculators for engineering students: reactions, diagrams, deflection, stress and buckling, following Shigley.">
+<meta name="description" content="Open-source beam, bar, column and stress concentration calculators for engineering students, following Shigley.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -88,6 +88,30 @@
             <span class="stale-note">The model changed. Press Solve to update.</span>
           </div>
           <div class="results-body" id="col-results-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="analysis" id="analysis-kt" hidden>
+    <section class="setup" id="kt-setup" aria-label="Setup"></section>
+    <div class="messages" id="kt-messages" aria-live="polite"></div>
+    <main class="work">
+      <div class="col" id="kt-inputs"></div>
+      <div class="col">
+        <section class="panel" aria-label="Part">
+          <div class="panel-head">
+            <h2>Part</h2>
+            <div class="legend"><span><i style="background: var(--load)"></i>Loads</span></div>
+          </div>
+          <div id="kt-view"></div>
+        </section>
+        <section class="panel results" id="kt-results" aria-label="Results">
+          <div class="panel-head">
+            <h2>Results</h2>
+            <span class="stale-note">The model changed. Press Solve to update.</span>
+          </div>
+          <div class="results-body" id="kt-results-body"></div>
         </section>
       </div>
     </main>

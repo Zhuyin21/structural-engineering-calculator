@@ -10,6 +10,7 @@ properties follow *Shigley's Mechanical Engineering Design*, 11th ed.
 | **Beam** | transverse and bending loads in two planes, plus axial force and torque |
 | **Bar** | axial load on a stepped member: force, stress, strain, displacement |
 | **Column** | buckling under compression: Euler, Johnson and secant formulas |
+| **Stress Concentration** | Kt and Kts for five notched geometries, read from Shigley's charts |
 | Shaft, Truss, Frame | planned |
 
 Switch between them from the **Analysis** menu. They share the units,
@@ -54,6 +55,20 @@ from Shigley Table 4-2 (recommended, theoretical or conservative values, or
 your own). Optional load for the factor of safety, and optional eccentricity
 for the secant formula. A chart shows the column on the critical-unit-load
 curve.
+
+## Stress Concentration
+
+Five geometries: a rectangular bar with a hole, with notches, or with a
+shoulder, and a round shaft with a shoulder or with a groove. Bars take an
+axial force F and a bending moment M; shafts also take a torque T. A load
+left blank is zero, so the factors can be read from the dimensions alone.
+
+Kt and Kts come from the curves of Shigley Table A-15 (Figures A-15-1 to
+A-15-9 and A-15-13 to A-15-15), which `src/kt/chartdata.js` holds as numbers
+taken from the book's own curves. Between two printed curves the value is
+interpolated. The page redraws each chart with the part marked on it, gives
+the nominal stress exactly as the chart defines it, the peak stress, and the
+von Mises stress and factor of safety for the loads combined.
 
 ## Shared
 
@@ -141,6 +156,8 @@ src/ui/                 menus, dialogs, tables and plots shared by all analyses
 src/beam/               solver.js (mechanics), model.js, draw.js, app.js (page)
 src/bar/                solver.js, app.js
 src/column/             solver.js, app.js
+src/kt/                 solver.js, chartdata.js (Shigley's charts as numbers), app.js
+tools/                  bundle.mjs (single-file build), extract_kt_charts.py (regenerates chartdata.js)
 tests/                  validation tests
 docs/                   sign conventions, validation notes, references
 ```

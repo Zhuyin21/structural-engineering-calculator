@@ -18,11 +18,19 @@ R. G. Budynas and J. K. Nisbett, *Shigley's Mechanical Engineering Design*,
 | Limiting slenderness ratio and J. B. Johnson formula | Sec. 4-12, Eqs. (4-45), (4-48) |
 | Secant formula for eccentric loading | Sec. 4-13, Eqs. (4-53), (4-54) |
 | von Mises stress and factor of safety, distortion-energy theory | Sec. 5-5, Eqs. (5-13) to (5-19) |
+| Stress concentration, Kt and Kts | Sec. 3-13; Table A-15, Figures A-15-1 to A-15-9 and A-15-13 to A-15-15 |
 | Elastic constants E, G and Poisson's ratio | Table A-5 |
 | Tensile and yield strengths of AISI 1006 to 1050 steels, HR and CD | Table A-20 |
 
 Table A-20 lists estimated ASTM minimum values for bar 18 to 32 mm in size;
 Shigley's source is the 1986 SAE Handbook, p. 2.15.
+
+The Table A-15 charts are reproduced in Shigley from R. E. Peterson, "Design
+Factors for Stress Concentration", *Machine Design*, vol. 23, 1951. The
+calculator does not use curve-fit equations for them. `tools/extract_kt_charts.py`
+reads the curves themselves out of the book's PDF, where they are stored as
+vector paths, and writes them as numbers to `src/kt/chartdata.js`. The PDF is
+not part of this repository.
 
 Two things in the code go beyond the book and are noted where they occur:
 

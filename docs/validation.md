@@ -62,6 +62,31 @@ signs are both asserted, to a relative tolerance of 1e-9 unless noted.
 | Secant formula | direct evaluation of Eq. (4-53); yield load tends to the Euler load as e tends to zero |
 | Two planes | weak axis governs; a free end in the other plane can take over |
 
+## Stress concentration
+
+The tool against every value the book itself reads from Table A-15:
+
+| Figure | Read at | Book | Tool | Where in Shigley |
+|--------|---------|------|------|------------------|
+| A-15-1 | d/w = 0.1 | 2.7 | 2.69 | Example 3-13 |
+| A-15-1 | d/w = 0.25 | 2.45 | 2.42 | Example 6-10 |
+| A-15-5 | r/d = 0.026, D/d = 1.18 | 2.5 | 2.45 | Example 3-13 |
+| A-15-6 | r/d = 0.15, D/d = 3 | 1.68 | 1.65 | Chapter 14 |
+| A-15-8 | r/d = 0.10, D/d = 1.5 | 1.42 | 1.44 | Example 7-1 |
+| A-15-8 | r/d = 0.1, D/d = 1.23 | 1.35 | 1.37 | Example 7-2 |
+| A-15-9 | r/d = 0.094, D/d = 1.19 | 1.65 | 1.65 | Examples 6-6, 6-7 |
+| A-15-9 | r/d = 0.1, D/d = 3 | 1.8 | 1.81 | Chapter 6 |
+| A-15-9 | r/d = 0.10, D/d = 1.5 | 1.68 | 1.68 | Example 7-1 |
+| A-15-9 | r/d = 0.1, D/d = 1.23 | 1.6 | 1.63 | Example 7-2 |
+
+All within about 2 percent; the book reads the charts by eye to two or three
+figures. The tests also check the nominal stresses of Example 3-13, the
+combination of loads, the chart limits, and that every curve is well formed.
+
+Known soft spot: when a part lies between a printed curve and one that has
+already left the top of the chart (Kt above 3), the tool uses the highest
+curve still on the chart and says so. The true value is somewhat higher.
+
 ## Materials
 
 Spot checks of Table A-20 (1006, 1020, 1045, 1050; HR and CD) and Table A-5

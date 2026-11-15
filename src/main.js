@@ -12,9 +12,10 @@ import { MATERIAL_SOURCE } from './core/materials.js';
 import { beam } from './beam/app.js';
 import { bar } from './bar/app.js';
 import { column } from './column/app.js';
+import { kt } from './kt/app.js';
 
 const REPO_URL = 'https://github.com/Zhuyin21/structural-engineering-calculator';
-const ANALYSES = [beam, bar, column];
+const ANALYSES = [beam, bar, column, kt];
 const PLANNED = ['Shaft', 'Truss', 'Frame'];
 const $ = (id) => document.getElementById(id);
 
@@ -32,7 +33,7 @@ function show(id, fromHash = false) {
 
 function about() {
   return h('div', { class: 'help' },
-    h('p', { text: 'Open-source calculators for engineering students to check their homework: beams, bars and columns, with shafts, trusses and frames planned.' }),
+    h('p', { text: 'Open-source calculators for engineering students to check their homework: beams, bars, columns and stress concentration, with shafts, trusses and frames planned.' }),
     h('p', { text: `Formulas and material properties follow ${MATERIAL_SOURCE.replace(', Tables A-5 and A-20', '')} (Budynas and Nisbett). Each analysis lists the equations it uses under Help.` }),
     h('p', {}, 'Source code, tests and issue tracker: ', h('a', { href: REPO_URL, target: '_blank', rel: 'noopener', text: REPO_URL.replace('https://', '') })),
     h('p', { class: 'muted', text: 'MIT licence. Results are for learning; check anything that matters independently.' }));
@@ -52,7 +53,7 @@ buildMenus($('menus'), [
       } }) },
       { label: 'Save…', onSelect: () => openExport(`Save this ${current.label.toLowerCase()}`, current.fileName('json'), current.saveText(), 'application/json') },
       'sep',
-      { label: 'Export results (CSV)…', disabled: !csv, tag: csv ? '' : current.id === 'column' ? 'not for columns' : 'solve first',
+      { label: 'Export results (CSV)…', disabled: !csv, tag: csv ? '' : ['column', 'kt'].includes(current.id) ? 'not for this analysis' : 'solve first',
         onSelect: () => openExport('Export results', current.fileName('csv'), csv, 'text/csv') },
     ];
   } },
@@ -61,8 +62,9 @@ buildMenus($('menus'), [
     'sep',
     ...PLANNED.map((label) => ({ label, disabled: true, tag: 'planned' })),
   ] },
-  { label: 'Examples', items: () => ANALYSES.flatMap((a) => [{ heading: a.label },
-    ...a.examples.map((ex) => ({ label: ex.title, onSelect: () => { show(a.id); ex.load(); } }))]) },
+  // One submenu per analysis; picking an example switches to that analysis and loads it.
+  { label: 'Examples', items: () => ANALYSES.map((a) => ({ label: a.label,
+    items: a.examples.map((ex) => ({ label: ex.title, onSelect: () => { show(a.id); ex.load(); } })) })) },
   { label: 'Help', items: () => [
     { label: `${current.label}: conventions and formulas`, onSelect: () => openInfo(current.helpTitle, current.help()) },
     { label: 'About', onSelect: () => openInfo('About', about()) },
