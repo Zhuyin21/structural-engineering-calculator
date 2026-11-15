@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Structural Engineering Calculator</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Open-source beam, bar, column and stress concentration calculators for engineering students, following Shigley.">
+<meta name="description" content="Open-source beam, bar, column, shaft and stress concentration calculators for engineering students, following Shigley.">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -88,6 +88,31 @@
             <span class="stale-note">The model changed. Press Solve to update.</span>
           </div>
           <div class="results-body" id="col-results-body"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="analysis" id="analysis-shaft" hidden>
+    <section class="setup" id="shaft-setup" aria-label="Setup"></section>
+    <div class="messages" id="shaft-messages" aria-live="polite"></div>
+    <main class="work">
+      <div class="col" id="shaft-tables"></div>
+      <div class="col">
+        <section class="panel" aria-label="Plane views">
+          <div class="panel-head">
+            <h2>Plane views</h2>
+            <div class="legend"><span><i style="background: var(--load)"></i>Loads</span><span><i style="background: var(--react)"></i>Reactions, after solving</span><span><i class="ring"></i>Lowest factor of safety</span><span><i class="brg"></i>Bearing</span></div>
+          </div>
+          <div class="view"><div class="view-title"><b>XY plane</b><span>from the front: x right, y up</span></div><div id="shaft-view-xy"></div></div>
+          <div class="view"><div class="view-title"><b>XZ plane</b><span>from above: x right, z down</span></div><div id="shaft-view-xz"></div></div>
+        </section>
+        <section class="panel results" id="shaft-results" aria-label="Results">
+          <div class="panel-head">
+            <h2>Results</h2>
+            <span class="stale-note">The shaft changed. Press Solve to update.</span>
+          </div>
+          <div class="results-body" id="shaft-results-body"></div>
         </section>
       </div>
     </main>

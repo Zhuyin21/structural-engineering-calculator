@@ -19,6 +19,12 @@ R. G. Budynas and J. K. Nisbett, *Shigley's Mechanical Engineering Design*,
 | Secant formula for eccentric loading | Sec. 4-13, Eqs. (4-53), (4-54) |
 | von Mises stress and factor of safety, distortion-energy theory | Sec. 5-5, Eqs. (5-13) to (5-19) |
 | Stress concentration, Kt and Kts | Sec. 3-13; Table A-15, Figures A-15-1 to A-15-9 and A-15-13 to A-15-15 |
+| Shaft stresses and fatigue criteria (DE-Goodman, DE-Morrow, DE-Gerber), first-cycle yield | Sec. 7-4, Eqs. 7-1 to 7-16; Sec. 6-13 |
+| Fillet proportions at bearing and gear seats, keyseat factors | Sec. 7-4, Table 7-1 |
+| Shaft deflection with steps, twist | Sec. 7-5, Eq. 7-19 |
+| Endurance limit and Marin factors ka, kb, ke | Eqs. 6-10, 6-17 to 6-19; Tables 6-2 and 6-4 |
+| Notch sensitivity and Kf | Eqs. 6-32 to 6-36 |
+| Fatigue strength coefficient for the Morrow line | Eq. 6-44 |
 | Elastic constants E, G and Poisson's ratio | Table A-5 |
 | Tensile and yield strengths of AISI 1006 to 1050 steels, HR and CD | Table A-20 |
 
@@ -38,5 +44,8 @@ Two things in the code go beyond the book and are noted where they occur:
   series, and the transverse shear stress of the I-beam and rectangular tube
   uses VQ/It for the idealised shape, where Table 3-2 gives the simpler
   V/A_web estimate.
+- In the shaft analysis the load of a component acts at the middle of its
+  width, and a keyseat is checked there, where the moment under the component
+  is largest. Shigley's Example 7-2 checks the end of the keyseat instead.
 - The secant formula is derived in the book for rounded ends. For other end
   conditions the calculator uses the effective length l/sqrt(C).

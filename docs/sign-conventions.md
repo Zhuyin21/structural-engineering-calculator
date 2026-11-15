@@ -44,3 +44,12 @@ moments, reaction moments and the diagrams all use the same sign.
 In each view dV/dx = w and dM/dx = V, where w is the distributed load
 measured up the page (+y in XY, −z in XZ). A counter-clockwise couple makes
 the moment diagram drop by its value.
+
+## Shaft
+
+The shaft analysis uses the same axes, views and signs as the beam. A torque
+T on a component is positive by the right-hand rule about +x; the torque
+diagram shows the internal torque on a cut face that looks toward +x, so a
+positive applied torque makes the diagram drop by its value. The total
+bending moment M = sqrt(My^2 + Mz^2), the total slope and the total
+deflection combine the two planes as vectors and are never negative.

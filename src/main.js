@@ -13,10 +13,11 @@ import { beam } from './beam/app.js';
 import { bar } from './bar/app.js';
 import { column } from './column/app.js';
 import { kt } from './kt/app.js';
+import { shaft } from './shaft/app.js';
 
 const REPO_URL = 'https://github.com/Zhuyin21/structural-engineering-calculator';
-const ANALYSES = [beam, bar, column, kt];
-const PLANNED = ['Shaft', 'Truss', 'Frame'];
+const ANALYSES = [beam, bar, column, shaft, kt];
+const PLANNED = ['Truss', 'Frame'];
 const $ = (id) => document.getElementById(id);
 
 let current = null;
@@ -33,7 +34,7 @@ function show(id, fromHash = false) {
 
 function about() {
   return h('div', { class: 'help' },
-    h('p', { text: 'Open-source calculators for engineering students to check their homework: beams, bars, columns and stress concentration, with shafts, trusses and frames planned.' }),
+    h('p', { text: 'Open-source calculators for engineering students to check their homework: beams, bars, columns, shafts and stress concentration, with trusses and frames planned.' }),
     h('p', { text: `Formulas and material properties follow ${MATERIAL_SOURCE.replace(', Tables A-5 and A-20', '')} (Budynas and Nisbett). Each analysis lists the equations it uses under Help.` }),
     h('p', {}, 'Source code, tests and issue tracker: ', h('a', { href: REPO_URL, target: '_blank', rel: 'noopener', text: REPO_URL.replace('https://', '') })),
     h('p', { class: 'muted', text: 'MIT licence. Results are for learning; check anything that matters independently.' }));

@@ -1,6 +1,6 @@
 {
   "name": "structural-engineering-calculator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Open-source beam, shaft, truss and frame calculators for engineering students. Runs in the browser.",
   "private": true,
   "type": "module",

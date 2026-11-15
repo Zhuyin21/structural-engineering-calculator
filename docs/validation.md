@@ -87,6 +87,40 @@ Known soft spot: when a part lies between a printed curve and one that has
 already left the top of the chart (Kt above 3), the tool uses the highest
 curve still on the chart and says so. The true value is somewhat higher.
 
+## Shaft
+
+All from Shigley, 11th ed. (`tests/shaft.test.js`).
+
+| Check | Book | Calculator |
+|-------|------|------------|
+| Example 7-1: ka, kb, q, q shear | 0.729, 0.870, 0.85, 0.88 | 0.729, 0.870, 0.85, 0.88 |
+| Example 7-1 from its own stresses: n by Goodman, Morrow, Gerber | 1.52, 1.60, 1.73 | 1.52, 1.60, 1.73 |
+| Example 7-1 shoulder inside a complete shaft: Kf, Kfs, Se | 1.58, 1.37, 27.1 kpsi | within 1 to 2 percent (chart readings) |
+| the same: n by Goodman, Morrow, Gerber, and ny | 1.52, 1.60, 1.73, 4.50 | within 1.5 percent |
+| Example 6-7: Kf from Eqs. 6-34, 6-35 in SI | 1.55 | 1.55 |
+| Example 7-2: bearing reactions | 356.7, 115.0, 725.3, 1776.0 lbf | the same |
+| Example 7-2: total moment at G, I, J, K, M | 749, 3651, 4316, 2398, 959 lbf in | the same |
+| Example 7-2, shoulder I (1020 CD): Kf, Kfs, Se, n | 1.49, 1.30, 22.7 kpsi, 1.44 | 1.51, 1.31, 22.7 kpsi, 1.42 |
+| Example 7-2, keyseat: Kf, Kfs | 1.74, 2.42 | 1.74, 2.42 |
+| Example 7-3, Table 7-3: six slopes and four deflections of the stepped shaft, each plane and total | for example 0.05711 deg, 0.0015870 in | all within 0.15 percent |
+
+The differences at shoulder I come from reading the charts: the book reads
+Kt = 1.6 and Kts = 1.35 by eye, the calculator 1.63 and 1.37.
+
+Two places where the calculator does not do what Example 7-2 does:
+
+- The keyseat is checked under the middle of the gear, where the moment is
+  4316 lbf in. The book checks the end of the keyseat with an estimated
+  3750 lbf in, so the calculator's factor of safety there is lower.
+- The retaining-ring grooves of Figure 7-10 are not modelled. The two plain
+  shoulders in the built-in example are given an assumed 0.05 in fillet.
+
+Other checks: a uniform shaft gives the same shear, moment, torque, slope,
+deflection and twist as the beam solver in both planes, on both sides of
+every load; closed-form deflection of a simply supported shaft; a two-diameter
+shaft against the unit-load integral; the tube section of a hollow segment;
+the SI and U.S. customary curve fits against each other; every input error.
+
 ## Materials
 
 Spot checks of Table A-20 (1006, 1020, 1045, 1050; HR and CD) and Table A-5

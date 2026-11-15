@@ -10,8 +10,9 @@ properties follow *Shigley's Mechanical Engineering Design*, 11th ed.
 | **Beam** | transverse and bending loads in two planes, plus axial force and torque |
 | **Bar** | axial load on a stepped member: force, stress, strain, displacement |
 | **Column** | buckling under compression: Euler, Johnson and secant formulas |
+| **Shaft** | rotating shaft on two bearings: fatigue and yield factor of safety at every shoulder and component, with diagrams in both planes |
 | **Stress Concentration** | Kt and Kts for five notched geometries, read from Shigley's charts |
-| Shaft, Truss, Frame | planned |
+| Truss, Frame | planned |
 
 Switch between them from the **Analysis** menu. They share the units,
 cross-section library and materials library. The workflow is always set up,
@@ -55,6 +56,36 @@ from Shigley Table 4-2 (recommended, theoretical or conservative values, or
 your own). Optional load for the factor of safety, and optional eccentricity
 for the secant formula. A chart shows the column on the critical-unit-load
 curve.
+
+## Shaft
+
+A rotating shaft on exactly two bearings, following Shigley Chapter 7. The
+bending moment is completely reversed, the torque is steady, and there is no
+axial load. You enter the diameters; the tool gives the factor of safety at
+every shoulder and component and marks the lowest.
+
+- **Stepped shaft (solid).** List the sections left to right. Every change
+  of diameter is a shoulder, and each bearing, gear, pulley or sprocket is
+  seated against a shoulder you choose, on the smaller diameter. Its load
+  acts at the middle of its width (at the shoulder if the width is blank).
+  Bearing seats use a fillet of r/d = 0.02; gear, pulley and sprocket seats
+  use r/d = 0.1; for a bare shoulder you type the fillet radius. Kt and Kts
+  come from Figures A-15-9 and A-15-8. A component can have an end-mill
+  keyseat (Table 7-1), checked under the middle of the component.
+- **Uniform shaft.** One outer diameter, with segments that are solid or
+  hollow (give the wall thickness). Components go at typed positions. There
+  is no stress concentration.
+- **Loads** on each component: forces Fy and Fz, a torque T about x, and
+  couples My and Mz. The torques must add up to zero.
+- **Fatigue**: DE-Goodman, DE-Morrow or DE-Gerber, with a first-cycle yield
+  check at every location. The endurance limit comes from Sut with the Marin
+  surface, size and reliability factors; Kf and Kfs from the notch
+  sensitivity.
+- **Results**: the factor of safety table with every intermediate value
+  (Kt, Kts, q, Kf, Kfs, kb, Se, alternating and mean stress); shear, moment,
+  slope and deflection in each plane; total moment, torque, total deflection
+  and twist; bearing reactions; slope and deflection at each bearing and
+  component. Slope and deflection include the steps in diameter.
 
 ## Stress Concentration
 
@@ -131,7 +162,8 @@ What the solvers have been checked against is in
 
 Linear elastic, small deflections. The beam and column take one uniform
 cross-section, symmetric about y and z. No shear deformation, no internal
-hinges, no temperature change, no stress concentration at steps. Torsion is
+hinges, no temperature change. Stress concentration is handled only in the
+Shaft and Stress Concentration analyses. Torsion is
 not included in the beam's stress diagrams or von Mises stress; torsional
 shear is listed separately for round sections and closed rectangular tubes.
 
@@ -156,6 +188,7 @@ src/ui/                 menus, dialogs, tables and plots shared by all analyses
 src/beam/               solver.js (mechanics), model.js, draw.js, app.js (page)
 src/bar/                solver.js, app.js
 src/column/             solver.js, app.js
+src/shaft/              solver.js (statics, stepped deflection, fatigue), model.js, app.js
 src/kt/                 solver.js, chartdata.js (Shigley's charts as numbers), app.js
 tools/                  bundle.mjs (single-file build), extract_kt_charts.py (regenerates chartdata.js)
 tests/                  validation tests
